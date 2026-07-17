@@ -1,0 +1,243 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  SuedeBucks / Peirama brand palette.
+
+  ACTIVE palette (brand hand-off):
+    Black  #2C2C2C  ->  ink / dark surfaces / sidebar panel   (0 0% 17%)
+    Purple #612D53  ->  --primary                             (316 37% 28%)
+    Maroon #853953  ->  --highlight                           (340 40% 37%)
+    White  #F3F4F4  ->  app canvas                            (180 4% 96%)
+
+  Colors are HSL triples consumed as hsl(var(--token)). The PREVIOUS palette
+  (Vance suede/gold) is kept commented-out below each block for easy swap-back —
+  uncomment the OLD block and comment the ACTIVE one to revert.
+*/
+
+/* ===== PREVIOUS PALETTE (suede/gold) — kept for swap-back ======================
+:root {
+  --background: 34 30% 96%;
+  --foreground: 24 22% 14%;
+  --card: 36 33% 99%;
+  --card-foreground: 24 22% 14%;
+  --popover: 36 33% 99%;
+  --popover-foreground: 24 22% 14%;
+  --primary: 24 42% 30%;
+  --primary-foreground: 36 40% 97%;
+  --secondary: 32 20% 90%;
+  --secondary-foreground: 24 22% 22%;
+  --muted: 32 20% 91%;
+  --muted-foreground: 26 12% 40%;
+  --accent: 26 34% 90%;
+  --accent-foreground: 24 42% 26%;
+  --highlight: 40 90% 50%;
+  --highlight-foreground: 24 30% 14%;
+  --success: 152 46% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 34 96% 48%;
+  --warning-foreground: 24 30% 14%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 30 18% 85%;
+  --input: 30 18% 82%;
+  --ring: 24 42% 34%;
+  --chart-1: 24 42% 34%;
+  --chart-2: 40 90% 52%;
+  --chart-3: 205 50% 44%;
+  --chart-4: 152 42% 42%;
+  --chart-5: 8 62% 52%;
+  --sidebar-background: 26 30% 13%;
+  --sidebar-foreground: 34 25% 82%;
+  --sidebar-primary: 40 90% 56%;
+  --sidebar-primary-foreground: 26 30% 12%;
+  --sidebar-accent: 26 22% 20%;
+  --sidebar-accent-foreground: 36 30% 94%;
+  --sidebar-border: 26 18% 22%;
+  --sidebar-ring: 40 90% 56%;
+  --shadow-color: 24 40% 4%;
+}
+================================================================================ */
+
+/* ===== ACTIVE PALETTE (black / purple / maroon / white) ===== */
+:root {
+  --background: 180 4% 96%;          /* #F3F4F4 white */
+  --foreground: 0 0% 17%;            /* #2C2C2C black */
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 17%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 17%;
+  --primary: 316 37% 28%;            /* #612D53 purple */
+  --primary-foreground: 180 4% 97%;
+  --secondary: 315 8% 90%;
+  --secondary-foreground: 0 0% 22%;
+  --muted: 315 8% 91%;
+  --muted-foreground: 300 3% 40%;
+  --accent: 316 22% 90%;             /* tinted purple */
+  --accent-foreground: 316 37% 24%;
+  --highlight: 340 40% 37%;          /* #853953 maroon */
+  --highlight-foreground: 180 4% 97%;
+  --success: 152 46% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 34 96% 48%;
+  --warning-foreground: 0 0% 15%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 315 8% 85%;
+  --input: 315 8% 82%;
+  --ring: 316 37% 32%;
+  --chart-1: 316 37% 34%;            /* purple */
+  --chart-2: 340 42% 44%;            /* maroon */
+  --chart-3: 205 45% 45%;            /* slate blue */
+  --chart-4: 152 42% 42%;            /* green */
+  --chart-5: 35 72% 52%;             /* amber */
+  --radius: 0.625rem;
+
+  /* Sidebar: a black (#2C2C2C) panel with a maroon active accent. */
+  --sidebar-background: 0 0% 17%;
+  --sidebar-foreground: 180 4% 84%;
+  --sidebar-primary: 340 50% 62%;
+  --sidebar-primary-foreground: 0 0% 12%;
+  --sidebar-accent: 0 0% 24%;
+  --sidebar-accent-foreground: 0 0% 96%;
+  --sidebar-border: 0 0% 26%;
+  --sidebar-ring: 340 50% 62%;
+
+  /* Elevation — near-black, real depth (not a gray halo). */
+  --shadow-color: 0 0% 4%;
+  --shadow-xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.16);
+  --shadow-sm: 0 1px 2px -1px hsl(var(--shadow-color) / 0.24), 0 2px 5px -1px hsl(var(--shadow-color) / 0.16);
+  --shadow-card: 0 1px 3px 0 hsl(var(--shadow-color) / 0.20), 0 6px 16px -6px hsl(var(--shadow-color) / 0.24);
+  --shadow-elevated: 0 6px 18px -6px hsl(var(--shadow-color) / 0.32), 0 14px 34px -10px hsl(var(--shadow-color) / 0.28);
+  --shadow-popover: 0 16px 42px -10px hsl(var(--shadow-color) / 0.40), 0 8px 20px -6px hsl(var(--shadow-color) / 0.30);
+}
+
+/* ===== PREVIOUS DARK PALETTE (suede/gold) — kept for swap-back =================
+.dark {
+  --background: 26 24% 8%;
+  --foreground: 34 22% 92%;
+  --card: 26 20% 11%;
+  --card-foreground: 34 22% 92%;
+  --popover: 26 20% 12%;
+  --popover-foreground: 34 22% 92%;
+  --primary: 28 55% 55%;
+  --primary-foreground: 26 30% 9%;
+  --secondary: 26 14% 18%;
+  --secondary-foreground: 34 18% 90%;
+  --muted: 26 14% 16%;
+  --muted-foreground: 30 10% 61%;
+  --accent: 26 30% 20%;
+  --accent-foreground: 30 60% 76%;
+  --highlight: 40 96% 58%;
+  --highlight-foreground: 26 34% 9%;
+  --success: 152 48% 47%;
+  --warning: 34 96% 57%;
+  --destructive: 3 70% 53%;
+  --border: 26 15% 20%;
+  --input: 26 15% 22%;
+  --ring: 30 64% 52%;
+  --chart-1: 28 56% 58%;  --chart-2: 40 96% 60%;  --chart-3: 205 62% 60%;
+  --chart-4: 152 48% 54%;  --chart-5: 8 68% 62%;
+  --sidebar-background: 26 26% 10%;
+  --sidebar-foreground: 34 22% 82%;
+  --sidebar-primary: 40 96% 58%;
+  --sidebar-primary-foreground: 26 30% 9%;
+  --sidebar-accent: 26 18% 17%;
+  --sidebar-accent-foreground: 36 30% 94%;
+  --sidebar-border: 26 15% 18%;
+  --sidebar-ring: 40 96% 58%;
+  --shadow-color: 26 65% 2%;
+}
+================================================================================ */
+
+/* ===== ACTIVE DARK PALETTE (black / purple / maroon) ===== */
+.dark {
+  --background: 0 0% 11%;
+  --foreground: 180 4% 94%;
+  --card: 0 0% 16%;                  /* ~#2C2C2C */
+  --card-foreground: 180 4% 94%;
+  --popover: 0 0% 16%;
+  --popover-foreground: 180 4% 94%;
+  --primary: 316 42% 62%;            /* brighter purple in dark */
+  --primary-foreground: 0 0% 10%;
+  --secondary: 0 0% 20%;
+  --secondary-foreground: 180 4% 92%;
+  --muted: 0 0% 18%;
+  --muted-foreground: 0 0% 62%;
+  --accent: 316 24% 24%;
+  --accent-foreground: 316 45% 80%;
+  --highlight: 340 52% 60%;          /* brighter maroon in dark */
+  --highlight-foreground: 0 0% 98%;
+  --success: 152 48% 47%;
+  --success-foreground: 0 0% 100%;
+  --warning: 34 96% 57%;
+  --warning-foreground: 0 0% 10%;
+  --destructive: 3 70% 53%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 22%;
+  --input: 0 0% 24%;
+  --ring: 316 45% 58%;
+  --chart-1: 316 45% 64%;
+  --chart-2: 340 55% 64%;
+  --chart-3: 205 55% 60%;
+  --chart-4: 152 48% 54%;
+  --chart-5: 35 78% 60%;
+
+  --sidebar-background: 0 0% 9%;
+  --sidebar-foreground: 180 4% 84%;
+  --sidebar-primary: 340 55% 64%;
+  --sidebar-primary-foreground: 0 0% 10%;
+  --sidebar-accent: 0 0% 17%;
+  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-border: 0 0% 18%;
+  --sidebar-ring: 340 55% 64%;
+
+  --shadow-color: 0 0% 1%;           /* near-pure black so shadows show on dark */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+    letter-spacing: -0.011em;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Thin, themed scrollbars — a floating-pill look. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.5);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
