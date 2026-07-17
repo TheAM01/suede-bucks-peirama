@@ -12,6 +12,8 @@ import {
   ExternalLink,
 } from "@/components/icons";
 import type { CurrentUser } from "@/lib/auth";
+import { CURRENCIES } from "@/lib/currency";
+import { useCurrency } from "@/components/currency-provider";
 import {
   Card,
   CardContent,
@@ -52,6 +54,7 @@ const NOTIFICATIONS = [
 ];
 
 export function SettingsView({ user }: { user: CurrentUser }) {
+  const { currency, setCurrency } = useCurrency();
   const [saved, setSaved] = React.useState(false);
   const [toggles, setToggles] = React.useState<Record<string, boolean>>({
     orders: true,
@@ -110,10 +113,15 @@ export function SettingsView({ user }: { user: CurrentUser }) {
             <Input defaultValue="+44 20 7946 0000" />
           </Field>
           <Field label="Currency" half>
-            <Select defaultValue="USD">
-              <option value="USD">USD — US Dollar</option>
-              <option value="GBP">GBP — British Pound</option>
-              <option value="EUR">EUR — Euro</option>
+            <Select
+              value={currency.code}
+              onChange={(e) => setCurrency(e.target.value)}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.label}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Timezone" half>

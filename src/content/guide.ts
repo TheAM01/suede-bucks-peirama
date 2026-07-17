@@ -205,19 +205,19 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         items: [
           { term: "Segment name", def: "A clear label for the group, like Repeat buyers or VIP." },
           { term: "Description", def: "What the group is and who belongs in it." },
-          { term: "Members", def: "How many customers are currently in the group." },
+          { term: "Members", def: "The customers in the group. Pick them from the searchable list when you create or edit the segment — the count on the row is simply how many you picked." },
           { term: "Growth %", def: "Whether the group is getting bigger or smaller lately." },
           { term: "Status", def: "**Active** (in use) or **Draft** (still being set up)." },
         ],
       },
-      { t: "ol", items: ["Open Relations then Segments.", "Click New to create a group, or click a row to edit one.", "Give it a name and description so your team knows who it targets.", "Save it as Draft while you refine it, then set it Active when ready.", "Use an Active segment when setting up a discount or a campaign."] },
+      { t: "ol", items: ["Open Relations then Segments.", "Click New to create a group, or click a row to edit one.", "Give it a name and description so your team knows who it targets.", "Under Members, search your customers and tick everyone who belongs in the group.", "Save it as Draft while you refine it, then set it Active when ready.", "Use an Active segment when setting up a discount or a campaign."] },
       { t: "callout", tone: "info", title: "Segments group people, collections group products", text: "It is easy to mix these up. A **segment** is a set of customers. A **collection** is a set of products. If you are grouping shoppers, you are in the right place." },
     ],
     technical: [
-      { t: "p", text: "The segments resource is keyed `segments`; search covers `name` and `description`. Fields are `name`, `description`, `members`, `growth`, `status`, and `updatedAt`. `status` is `active` or `draft`." },
-      { t: "ul", items: ["`members` is a stored integer count in the mock, not a live query result.", "`growth` is a percentage figure shown in the Growth column.", "KPIs: Segments (count), Total reach (`sum(members)`), Largest segment (`max(members)`), and Average size (`sum(members) / count`)."] },
-      { t: "callout", tone: "warning", title: "Membership is not rule-driven yet", text: "In a real Shopify integration a segment would carry a query/definition and its `members` count would be evaluated dynamically. Here `members` is a static field on the row, so editing it does not re-select any customers." },
-      { t: "p", text: "When backed by the Admin API this maps to a Shopify customer segment with a saved filter expression; the local `members` and `growth` fields would become derived read-only values refreshed on sync." },
+      { t: "p", text: "The segments resource is keyed `segments`; search covers `name` and `description`. Fields are `name`, `description`, `customerIds`, `growth`, `status`, and `updatedAt`. `status` is `active` or `draft`." },
+      { t: "ul", items: ["Membership is an explicit list: `customerIds` holds the Shopify customer ids picked in the `multiselect` field. Segments are app-owned (MongoDB), customers are Shopify-backed, so the join is by stored id.", "`members` is derived, never stored — `src/lib/app-data.ts` sets it to `customerIds.length` on every read and strips any client-sent value on write, so the count can't drift from the list.", "`growth` is a percentage figure shown in the Growth column, and is still hand-entered.", "KPIs: Segments (count), Total reach (`sum(members)`), Largest segment (`max(members)`), and Average size (`sum(members) / count`)."] },
+      { t: "callout", tone: "info", title: "Membership is manual, not rule-driven", text: "You choose members explicitly. A segment does not carry a query, so it will not pick up new customers on its own — a shopper who starts matching the segment's intent later has to be added by hand. Shopify's own customer segments are rule-driven; that is a different model this does not implement." },
+      { t: "callout", tone: "warning", title: "Deleted customers linger as ids", text: "`customerIds` stores ids, not snapshots. If a customer is deleted in Shopify, their id stays on the segment and the picker reports it as “no longer listed” rather than dropping it silently. The `members` count still includes it until you clear it." },
     ],
     deep: [
       {

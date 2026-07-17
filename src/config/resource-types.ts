@@ -20,6 +20,7 @@ export type FieldType =
   | "currency"
   | "textarea"
   | "select"
+  | "multiselect"
   | "status"
   | "date";
 
@@ -47,6 +48,8 @@ export interface ResourceField {
   options?: FieldOption[];
   /** live options from another resource — takes precedence over `options` */
   optionsFrom?: OptionsSource;
+  /** `multiselect` only — noun shown in the picker's empty/summary text */
+  itemNoun?: string;
   placeholder?: string;
   required?: boolean;
   /** render at half width in the two-column form grid */
@@ -103,6 +106,8 @@ export interface ResourceConfig {
   rowLocked?: (row: Row) => boolean;
   /** tooltip shown on a locked row's lock icon */
   lockedHint?: string;
+  /** when set, clicking a row opens this detail route instead of the edit drawer */
+  rowHref?: (row: Row) => string;
 }
 
 /** Resolve the badge variant for a status value from a resource's field options. */

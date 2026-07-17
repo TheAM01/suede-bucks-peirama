@@ -48,9 +48,9 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   }
 
-  const { error } = await updateAppRow(g.resource, g.id, body);
+  const { row, error } = await updateAppRow(g.resource, g.id, body);
   if (error) return NextResponse.json({ error }, { status: 503 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, row });
 }
 
 export async function DELETE(

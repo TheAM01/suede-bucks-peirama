@@ -11,12 +11,25 @@ import { cn } from "@/lib/utils";
 
 export type FormValues = Record<string, string>;
 
+/** `multiselect` values ride through the string-valued form state as a joined
+ *  id list, and are split back into an array by `coerceValues`. */
+const MULTI_SEP = ",";
+
+export const splitIds = (val: string): string[] =>
+  val ? val.split(MULTI_SEP).filter(Boolean) : [];
+
+export const joinIds = (ids: string[]): string => ids.join(MULTI_SEP);
+
 /** Build initial string-valued form state from a row (or blanks). */
 export function initialValues(config: ResourceConfig, row?: Row): FormValues {
   const v: FormValues = {};
   for (const f of config.fields) {
     const raw = row?.[f.key];
-    if (raw !== undefined && raw !== null) v[f.key] = String(raw);
+    if (f.type === "multiselect") {
+      v[f.key] = Array.isArray(raw)
+        ? joinIds(raw.filter((x): x is string => typeof x === "string"))
+        : "";
+    } else if (raw !== undefined && raw !== null) v[f.key] = String(raw);
     else if (f.type === "status" || f.type === "select")
       v[f.key] = f.options?.[0]?.value ?? "";
     else v[f.key] = "";
@@ -31,6 +44,8 @@ export function coerceValues(config: ResourceConfig, values: FormValues): Row {
     const val = values[f.key];
     if (f.type === "number" || f.type === "currency") {
       out[f.key] = val === "" ? 0 : Number(val);
+    } else if (f.type === "multiselect") {
+      out[f.key] = splitIds(val ?? "");
     } else {
       out[f.key] = val;
     }
@@ -85,6 +100,141 @@ function DynamicSelect({
   );
 }
 
+/** Searchable multi-select over another resource's rows (`field.optionsFrom`). */
+function MultiSelectPicker({
+  field,
+  value,
+  onChange,
+}: {
+  field: ResourceField;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const src = field.optionsFrom!;
+  const { rows, loading, error } = useResource(src.resource);
+  const [query, setQuery] = React.useState("");
+  const noun = field.itemNoun ?? "item";
+
+  const selected = React.useMemo(() => new Set(splitIds(value)), [value]);
+
+  const options = React.useMemo(
+    () =>
+      rows
+        .map((r) => ({
+          value: String(r[src.valueKey] ?? ""),
+          label: String(r[src.labelKey] ?? ""),
+          sub: src.subKey ? String(r[src.subKey] ?? "") : "",
+        }))
+        .filter((o) => o.value && o.label),
+    [rows, src.valueKey, src.labelKey, src.subKey],
+  );
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) || o.sub.toLowerCase().includes(q),
+    );
+  }, [options, query]);
+
+  // Ids saved earlier whose source row is gone (deleted upstream). Kept in the
+  // value so saving doesn't silently drop them, but surfaced honestly.
+  const missing = React.useMemo(
+    () => splitIds(value).filter((id) => !options.some((o) => o.value === id)),
+    [value, options],
+  );
+
+  function toggle(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(joinIds([...next]));
+  }
+
+  if (error) {
+    return (
+      <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+        Couldn&apos;t load {src.resource} — {error}
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-input bg-card">
+      <div className="border-b border-border p-2">
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={loading ? "Loading…" : `Search ${src.resource}…`}
+          disabled={loading}
+          className="h-8"
+        />
+      </div>
+
+      <div className="max-h-56 overflow-y-auto p-1">
+        {loading ? (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            Loading {src.resource}…
+          </p>
+        ) : filtered.length === 0 ? (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            {options.length === 0
+              ? `No ${src.resource} available to add.`
+              : `No ${src.resource} match “${query}”.`}
+          </p>
+        ) : (
+          filtered.map((o) => {
+            const checked = selected.has(o.value);
+            return (
+              <label
+                key={o.value}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
+                  checked && "bg-accent/60",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(o.value)}
+                  className="size-4 shrink-0 accent-primary"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{o.label}</span>
+                  {o.sub ? (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {o.sub}
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+            );
+          })
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs">
+        <span className="text-muted-foreground">
+          {selected.size} {noun}
+          {selected.size === 1 ? "" : "s"} selected
+          {missing.length ? ` · ${missing.length} no longer listed` : ""}
+        </span>
+        {selected.size > 0 ? (
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline"
+            onClick={() => onChange("")}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function ResourceForm({
   config,
   values,
@@ -127,6 +277,12 @@ export function ResourceForm({
                 value={values[field.key] ?? ""}
                 onChange={(e) => set(field.key, e.target.value)}
                 placeholder={field.placeholder}
+              />
+            ) : field.type === "multiselect" ? (
+              <MultiSelectPicker
+                field={field}
+                value={values[field.key] ?? ""}
+                onChange={(v) => set(field.key, v)}
               />
             ) : field.optionsFrom ? (
               <DynamicSelect

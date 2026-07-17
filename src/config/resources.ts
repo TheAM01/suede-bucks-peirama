@@ -121,7 +121,19 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     fields: [
       { key: "name", label: "Segment name", type: "text", required: true },
       { key: "description", label: "Description", type: "textarea" },
-      { key: "members", label: "Members", type: "number", half: true },
+      {
+        key: "customerIds",
+        label: "Members",
+        type: "multiselect",
+        itemNoun: "customer",
+        optionsFrom: {
+          resource: "customers",
+          valueKey: "id",
+          labelKey: "name",
+          subKey: "email",
+        },
+        help: "Pick the customers in this segment. The member count is derived from this list.",
+      },
       { key: "growth", label: "Growth %", type: "number", half: true },
       {
         key: "status",
@@ -484,6 +496,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     subtitle: "Incoming and fulfilled orders",
     guide: "orders",
     searchKeys: ["number", "customer"],
+    rowHref: (r) => `/dashboard/orders/${r.id}`,
     columns: [
       { key: "number", header: "Order", type: "primary", sub: "customer" },
       { key: "total", header: "Total", type: "currency", align: "right" },

@@ -124,7 +124,7 @@ export function BottomBar() {
                 </span>
               </button>
             </MenuTrigger>
-            <MenuContent align="start" width="w-64" className="mb-2 mt-0 -translate-y-full">
+            <MenuContent align="start" width="w-64">
               <MenuLabel>System status</MenuLabel>
               {SERVICE_META.map((s) => {
                 const Icon = s.icon;

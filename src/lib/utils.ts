@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getActiveCurrency } from "./currency";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -10,11 +11,12 @@ export function formatNumber(n: number): string {
   return new Intl.NumberFormat("en-US").format(n);
 }
 
-/** Format a number as USD currency. */
+/** Format a number in the store's active currency (see lib/currency). */
 export function formatCurrency(n: number, opts?: Intl.NumberFormatOptions): string {
-  return new Intl.NumberFormat("en-US", {
+  const { locale, code } = getActiveCurrency();
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "USD",
+    currency: code,
     maximumFractionDigits: 2,
     ...opts,
   }).format(n);
@@ -22,9 +24,10 @@ export function formatCurrency(n: number, opts?: Intl.NumberFormatOptions): stri
 
 /** Compact currency, e.g. $12.4k. */
 export function formatCompactCurrency(n: number): string {
-  return new Intl.NumberFormat("en-US", {
+  const { locale, code } = getActiveCurrency();
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "USD",
+    currency: code,
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(n);
@@ -56,6 +59,19 @@ export function formatDate(iso: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+  });
+}
+
+/** Date + time, for timelines where ordering within a day matters. */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 

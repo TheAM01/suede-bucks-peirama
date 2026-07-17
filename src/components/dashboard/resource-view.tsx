@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   MoreHorizontal,
@@ -14,6 +15,7 @@ import {
   ShoppingBag,
   Plug,
   Lock,
+  ArrowRight,
 } from "@/components/icons";
 import type {
   ResourceColumn,
@@ -106,6 +108,7 @@ type SortState = { key: string; dir: "asc" | "desc" } | null;
 
 export function ResourceView({ resourceKey }: { resourceKey: string }) {
   const config = getResource(resourceKey);
+  const router = useRouter();
   const store = useStore();
   const { rows, loading, readOnly, source, error } = useResource(resourceKey);
   const { search, page, setPage, pageSize, setTotal } = useDashboardUI();
@@ -165,6 +168,13 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
     setEditing(null);
     setValues(initialValues(config!));
     setDrawerOpen(true);
+  }
+  // A resource with a detail route opens it on row click; everything else
+  // falls back to the inline edit drawer.
+  function openRow(row: Row) {
+    const href = config?.rowHref?.(row);
+    if (href) router.push(href);
+    else openEdit(row);
   }
   function openEdit(row: Row) {
     if (readOnly || config?.rowLocked?.(row)) return;
@@ -343,11 +353,15 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
             <TableBody>
               {paged.map((row) => {
                 const locked = config.rowLocked?.(row) ?? false;
+                const href = config.rowHref?.(row);
                 return (
                   <TableRow
                     key={row.id}
-                    className={cn("group", !readOnly && !locked && "cursor-pointer")}
-                    onClick={() => openEdit(row)}
+                    className={cn(
+                      "group",
+                      (href || (!readOnly && !locked)) && "cursor-pointer",
+                    )}
+                    onClick={() => openRow(row)}
                   >
                     {config.columns.map((col) => (
                       <TableCell
@@ -380,7 +394,13 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
                                 <MoreHorizontal />
                               </Button>
                             </MenuTrigger>
-                            <MenuContent width="w-40">
+                            <MenuContent width="w-44">
+                              {href ? (
+                                <MenuItem onSelect={() => router.push(href)}>
+                                  <ArrowRight />
+                                  View details
+                                </MenuItem>
+                              ) : null}
                               <MenuItem onSelect={() => openEdit(row)}>
                                 <Pencil />
                                 Edit
