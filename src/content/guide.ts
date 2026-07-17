@@ -482,7 +482,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Items / Notes", def: "How many items are on the order, plus a notes box." },
         ],
       },
-      { t: "ol", items: ["Open Sales then Orders.", "Sort by Fulfillment or filter with search to find what needs shipping.", "Click an order to see its details in the drawer.", "Once you have shipped it, update Fulfillment to Fulfilled.", "Add a note if anything about the order is unusual."] },
+      { t: "ol", items: ["Open Sales then Orders.", "Sort by Fulfillment or filter with search to find what needs shipping.", "Click an order to open its own page, with the full step-by-step history.", "Once you have shipped it, update Fulfillment to Fulfilled.", "Add a note if anything about the order is unusual."] },
+      { t: "callout", tone: "info", title: "Click an order to see every step", text: "The list only has room for the current status. Opening an order shows its **Timeline** — placed, each payment, each shipment with its tracking number, deliveries, refunds, and cancellation — newest first, alongside the items, the shipping address, and the payment breakdown." },
       { t: "callout", tone: "warning", title: "Unfulfilled orders are your to-do list", text: "The **Unfulfilled** count in the stat cards is work waiting on you. Clear it regularly so nothing that is paid for goes unshipped." },
     ],
     technical: [
@@ -491,6 +492,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
       { t: "p", text: "KPIs: Orders (count with delta), Revenue (`sum(total)` with delta), Unfulfilled (`fulfillment === 'unfulfilled'`), and Average order value (`sum(total) / count`)." },
       { t: "callout", tone: "info", title: "Payment and fulfilment are independent axes", text: "An order can be `paid` but `unfulfilled`, or `fulfilled` but `refunded`. The two statuses do not gate each other in the mock, so treat them as separate lifecycles rather than a single linear status." },
       { t: "p", text: "Maps to a Shopify `Order` with financial status (payment) and fulfilment status. `channel` maps to the sales channel (online store vs. Shopify POS). Transactions for an order live in the separate transactions resource, referenced by order number." },
+      { t: "p", text: "The row list carries only two snapshot enums (`displayFinancialStatus`, `displayFulfillmentStatus`). The history behind them is a separate per-order read: `orders` declares `rowHref`, so a row click routes to `/dashboard/orders/[id]`, which fetches `/api/orders/[id]` → `readOrderDetail()` in `src/lib/shopify-order-detail.ts`." },
+      { t: "ul", items: ["That one GraphQL query pulls `lineItems`, `fulfillments` (with `trackingInfo`), `transactions`, `refunds`, and Shopify's `events` log.", "`buildTimeline()` merges every dated record into one list sorted newest-first, tagged by kind (`placed`, `payment`, `fulfillment`, `delivery`, `refund`, `cancelled`, `event`) which drives the icon and accent per step.", "It is read-only and fetched per visit — no local history is stored, so the timeline is exactly what Shopify reports at that moment.", "Needs the `read_orders` and `read_fulfillments` scopes; a scope or schema failure surfaces as an error card, never partial or invented history."] },
     ],
     deep: [
       {
