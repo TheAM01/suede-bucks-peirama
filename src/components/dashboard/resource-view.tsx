@@ -26,7 +26,8 @@ import { statusVariant } from "@/config/resource-types";
 import { getResource } from "@/config/resources";
 import { useResource, useStore } from "@/lib/store";
 import { useDashboardUI } from "./ui-context";
-import { formatCurrency, formatDate, formatNumber, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, formatNumber, cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/segmented";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,13 +62,19 @@ function Cell({
   config,
   col,
   row,
+  index,
 }: {
   config: ResourceConfig;
   col: ResourceColumn;
   row: Row;
+  index: number;
 }) {
   const val = row[col.key];
   switch (col.type) {
+    case "index":
+      return (
+        <span className="tabular-nums text-muted-foreground/60">{index + 1}</span>
+      );
     case "primary":
       return (
         <div className="min-w-0">
@@ -95,6 +102,12 @@ function Cell({
           {val ? formatDate(String(val)) : "—"}
         </span>
       );
+    case "datetime":
+      return (
+        <span className="whitespace-nowrap text-muted-foreground">
+          {val ? formatDateTime(String(val)) : "—"}
+        </span>
+      );
     case "status": {
       const { label, variant } = statusVariant(config, col.key, val);
       return <Badge variant={variant}>{label}</Badge>;
@@ -114,6 +127,7 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
   const { search, page, setPage, pageSize, setTotal } = useDashboardUI();
 
   const [sort, setSort] = React.useState<SortState>(null);
+  const [tab, setTab] = React.useState<string>("all");
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [values, setValues] = React.useState<FormValues>({});
@@ -125,8 +139,11 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
     if (!config) return [];
     const q = search.trim().toLowerCase();
     let out = rows;
+    if (config.tabs && tab !== "all") {
+      out = out.filter((r) => r[config.tabs!.field] === tab);
+    }
     if (q) {
-      out = rows.filter((r) =>
+      out = out.filter((r) =>
         config.searchKeys.some((k) =>
           String(r[k] ?? "").toLowerCase().includes(q),
         ),
@@ -143,12 +160,12 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
       });
     }
     return out;
-  }, [rows, search, sort, config]);
+  }, [rows, search, sort, config, tab]);
 
-  // Reset to first page whenever the search query changes.
+  // Reset to first page whenever the search query or active tab changes.
   React.useEffect(() => {
     setPage(1);
-  }, [search, setPage]);
+  }, [search, tab, setPage]);
 
   // Publish result count to the bottom-bar pagination.
   React.useEffect(() => {
@@ -266,12 +283,25 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
               {source === "shopify" && readOnly ? " · view-only" : ""}
             </p>
           </div>
-          {!readOnly ? (
-            <Button onClick={openCreate}>
-              <Plus />
-              New {config.singular.toLowerCase()}
-            </Button>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {config.tabs ? (
+              <Segmented
+                size="sm"
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: "all", label: "All" },
+                  ...config.tabs.options,
+                ]}
+              />
+            ) : null}
+            {!readOnly ? (
+              <Button onClick={openCreate}>
+                <Plus />
+                New {config.singular.toLowerCase()}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {paged.length === 0 ? (
@@ -317,6 +347,13 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {config.columns.map((col) => {
+                  if (col.type === "index") {
+                    return (
+                      <TableHead key={col.key} className="w-10">
+                        {col.header}
+                      </TableHead>
+                    );
+                  }
                   const active = sort?.key === col.key;
                   return (
                     <TableHead
@@ -351,9 +388,10 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paged.map((row) => {
+              {paged.map((row, i) => {
                 const locked = config.rowLocked?.(row) ?? false;
                 const href = config.rowHref?.(row);
+                const rowIndex = (safePage - 1) * pageSize + i;
                 return (
                   <TableRow
                     key={row.id}
@@ -368,7 +406,7 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
                         key={col.key}
                         className={cn(col.align === "right" && "text-right")}
                       >
-                        <Cell config={config} col={col} row={row} />
+                        <Cell config={config} col={col} row={row} index={rowIndex} />
                       </TableCell>
                     ))}
                     {!readOnly ? (

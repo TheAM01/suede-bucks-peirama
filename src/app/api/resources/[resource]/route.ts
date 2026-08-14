@@ -6,6 +6,7 @@ import { SHOPIFY_READERS } from "@/lib/shopify-reads";
 import { SHOPIFY_WRITERS } from "@/lib/shopify-writes";
 import { isAppOwned, listAppRows, createAppRow } from "@/lib/app-data";
 import { listAdjustments, createAdjustment } from "@/lib/stock-adjustments";
+import { listLoadSheets, createLoadSheet } from "@/lib/dispatch";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,11 @@ export async function GET(
 
   if (resource === "stock-adjustments") {
     const { rows, error } = await listAdjustments();
+    return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
+  }
+
+  if (resource === "dispatch") {
+    const { rows, error } = await listLoadSheets();
     return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
   }
 
@@ -85,6 +91,14 @@ export async function POST(
 
   if (resource === "stock-adjustments") {
     const { row, error } = await createAdjustment(body);
+    if (error || !row) {
+      return NextResponse.json({ error: error ?? "Create failed." }, { status: 422 });
+    }
+    return NextResponse.json({ row });
+  }
+
+  if (resource === "dispatch") {
+    const { row, error } = await createLoadSheet(body);
     if (error || !row) {
       return NextResponse.json({ error: error ?? "Create failed." }, { status: 422 });
     }

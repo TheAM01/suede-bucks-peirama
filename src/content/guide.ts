@@ -28,7 +28,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Overview", def: "The **Analytics** dashboard — your headline numbers for sales, orders, and customers at a glance." },
           { term: "Relations", def: "The people side of the business: **Customers**, **Segments** (groups of customers), and **Discounts**." },
           { term: "Catalog", def: "What you sell: **Products**, **Collections**, **Inventory** (stock levels), and **Categories**." },
-          { term: "Sales", def: "Money coming in: **Orders**, **Draft orders**, **Transactions**, and **Abandoned checkouts**." },
+          { term: "Sales", def: "Money coming in: **Orders**, **Draft orders**, **Returns**, **Dispatch**, **Transactions**, and **Abandoned checkouts**." },
           { term: "Point of Sale", def: "Selling in person: **Registers**, **Locations**, and **POS staff**." },
           { term: "System", def: "**Settings** for the shop and your account." },
         ],
@@ -548,6 +548,73 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
   // ==========================================================================
   {
+    id: "returns",
+    title: "Returns",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "The **Returns** page will be where you handle merchandise customers send back — return authorizations, refunds, and getting stock back into Inventory. It isn't built out yet, so right now the page just holds its place in the sidebar." },
+      { t: "callout", tone: "info", title: "Coming soon", text: "There is nothing to do here yet. Once returns are scoped, this section will explain how to process one step by step." },
+    ],
+    technical: [
+      { t: "p", text: "The `/dashboard/returns` route is a static placeholder page (`src/app/dashboard/returns/page.tsx`) — it renders an `EmptyState` and is not backed by a resource in `src/config/resources.ts` or any data module. It exists so the nav entry and guide slug are in place ahead of the real design." },
+      { t: "callout", tone: "warning", title: "No data model defined yet", text: "There is intentionally no schema, API route, or storage for returns. When the scope is defined, follow the pattern in `src/lib/dispatch.ts` or `src/lib/stock-adjustments.ts` if it needs an audited document, or `src/lib/app-data.ts` if plain CRUD suffices." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "dispatch",
+    title: "Dispatch",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "The **Dispatch** page is your courier handover book. When a batch of orders is ready to leave a location with a courier, you group them into a **load sheet** — one document that says which courier is collecting, how many shipments, their combined value and weight, and any cash-on-delivery (COD) being carried." },
+      { t: "p", text: "Sheets move through three stages, shown as tabs at the top of the table: **Draft** (still being put together), **Posted** (handed to the courier), and **Archived** (kept for records once settled)." },
+      {
+        t: "dl",
+        items: [
+          { term: "Reference/ID", def: "The sheet's number, like **LS001**, assigned automatically in order." },
+          { term: "Courier", def: "Which courier company is collecting this sheet." },
+          { term: "Location", def: "The store or warehouse the shipments are leaving from." },
+          { term: "Status", def: "**Draft**, **Posted**, or **Archived** — also which tab the sheet appears under." },
+          { term: "Reconciliation", def: "**Pending** or **Reconciled** — whether the COD cash this sheet's courier collected has been settled back to you." },
+          { term: "Total Shipments", def: "How many orders/parcels are on this sheet." },
+          { term: "Total Amount", def: "The combined value of everything on the sheet." },
+          { term: "COD Amount", def: "How much of that total the courier is collecting in cash on delivery." },
+          { term: "Weight", def: "The sheet's combined weight." },
+          { term: "Date Created / Date Posted", def: "When the sheet was started, and when it was handed to the courier." },
+        ],
+      },
+      { t: "ol", items: ["Open Sales then Dispatch.", "Click New load sheet and pick the courier and location.", "Fill in the shipment count, total amount, COD amount, and weight.", "Leave it as Draft while you are still assembling it.", "Set it to Posted once the courier has physically collected it — this stamps Date Posted.", "Once the courier settles the COD cash with you, set Reconciliation to Reconciled.", "Move settled, old sheets to Archived to keep the Posted tab focused on what is still outstanding."] },
+      { t: "callout", tone: "warning", title: "Posting stamps the date and doesn't reset", text: "Date Posted is set the moment a sheet first becomes Posted. Archiving it afterwards does not clear or change that date — it's a permanent record of when it left." },
+    ],
+    technical: [
+      { t: "p", text: "The resource is keyed `dispatch` and is **app-owned**: load sheets live in MongoDB (`app_dispatch_load_sheets`) via `src/lib/dispatch.ts`, following the same pattern as `stock-adjustments` rather than the generic `app-data.ts` CRUD path, because it needs server-generated reference numbers and a one-way status timestamp. Search covers `reference`, `courier`, and `location`." },
+      { t: "ul", items: [
+        "`reference` (`LS001`, `LS002`, ...) comes from an atomic counter in `app_counters` (counter id `dispatch`), zero-padded to 3 digits — never duplicated, same mechanism as `stock-adjustments`' `SA-XXXX` numbers.",
+        "`status` is one of `draft`, `posted`, or `archived`, driving the resource's `tabs` config (`ResourceConfig.tabs`) — a segmented All/Draft/Posted/Archived filter rendered by `resource-view.tsx` above the table.",
+        "`reconciliation` is `pending` or `reconciled`, independent of `status` — a sheet can be Posted and still Pending reconciliation.",
+        "`totalShipments`, `totalAmount`, `codAmount`, and `weight` are plain hand-entered numeric/currency fields, not derived from a line-item list — consistent with how `collections.products` or `registers.sales` are stored counts elsewhere in this app.",
+        "`createdAt` is set server-side at creation; `datePosted` is stamped server-side the first time `status` becomes `posted` and is never overwritten by later edits (including a later `archived` transition) — enforced in `updateLoadSheet()` by checking `!existing.datePosted` before setting it.",
+        "`courier` and `location` are plain `select` fields (fixed option lists), not `optionsFrom` a live resource — dispatch doesn't post anything to Shopify, so it doesn't need a real location GID the way `stock-adjustments`' facility field does.",
+      ] },
+      { t: "p", text: "The `#` column uses the new `\"index\"` `ColumnType` — a display-only row-position number (1, 2, 3, ...) computed from the sorted/filtered/paginated row list in `resource-view.tsx`, not a stored field. `Date Created` / `Date Posted` use the new `\"datetime\"` `ColumnType` (`formatDateTime()`), which is why they render with a time (e.g. `Jul 30, 2026, 4:20 PM`) unlike the date-only columns elsewhere." },
+      { t: "callout", tone: "info", title: "Modelled on courier load sheets, terminology may evolve", text: "The **Reconciliation** field is a best-guess interpretation (whether courier-collected COD has been settled with the store) — if your courier workflow means something different by it, the field and its options in `src/config/resources.ts` are easy to relabel." },
+    ],
+    deep: [
+      {
+        title: "Why Dispatch has tabs and most other pages don't",
+        everyday: [
+          { t: "p", text: "Most pages just show you everything in one table. Dispatch adds tabs (All, Draft, Posted, Archived) because a courier handover naturally moves through those three stages and you usually only care about one at a time — for example, only what's still sitting in Draft waiting to go out." },
+        ],
+        technical: [
+          { t: "p", text: "`ResourceConfig.tabs` (`{ field, options }`) is a small generic addition to the resource engine, not a Dispatch-only hack: any resource can opt in by setting `tabs` in `src/config/resources.ts`, and `resource-view.tsx` renders the `Segmented` control and filters `rows[field]` accordingly, on top of (not instead of) the existing search and per-column sort. The KPI row is intentionally unaffected by the active tab — stats always compute over the full row set, same as search." },
+        ],
+      },
+    ],
+  },
+
+  // ==========================================================================
+  {
     id: "transactions",
     title: "Transactions",
     category: "Sales",
@@ -798,10 +865,26 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         ],
       },
       { t: "p", text: "Many pages also have their own small settings button in the top bar for options that apply just to that page — for example how a table is displayed. Those are separate from this main Settings area." },
+      { t: "p", text: "One setting here is **Dashboard view**, with two options:" },
+      {
+        t: "dl",
+        items: [
+          { term: "New", def: "Shows every page in the sidebar — the full set described in the Platform overview." },
+          { term: "Legacy", def: "Shows only the original page set plus Returns and Dispatch: Dashboard, Analytics, Customers, Products, Inventory, Stock Adjustments, Orders, Draft Orders, Returns, Dispatch, Settings, Integrations, and Guide. Everything else (Segments, Discounts, Collections, Categories, Transactions, Abandoned Checkouts, and all of Point of Sale) is hidden from the sidebar." },
+        ],
+      },
+      { t: "callout", tone: "info", title: "Legacy hides pages, it doesn't lock them", text: "Switching to **Legacy** only tidies the sidebar. A hidden page is still there if you type its address directly — nothing is disabled, so links and bookmarks to it keep working." },
       { t: "callout", tone: "warning", title: "Only one login runs this dashboard", text: "This shop uses a single administrator account. Keep those credentials safe — anyone with them can see and change everything. Always log out on shared computers." },
     ],
     technical: [
       { t: "p", text: "Settings covers account and system configuration rather than a seeded resource collection. The central fact of the auth model lives here: the dashboard is protected by a single admin account, not a multi-user system." },
+      { t: "h", text: "Dashboard view (Legacy / New)" },
+      { t: "p", text: "`src/lib/dashboard-view.ts` defines the `DashboardView` type (`\"legacy\" | \"new\"`) and `LEGACY_VISIBLE_HREFS`, the fixed set of hrefs shown in Legacy mode. `DashboardViewProvider` (`src/components/dashboard-view-provider.tsx`) persists the choice to `localStorage` under `suedebucks:dashboard-view`, mounted in `DashboardShell` alongside `CurrencyProvider` — same client-only, no-backend pattern as the currency setting." },
+      { t: "ul", items: [
+        "`Sidebar` reads `useDashboardView()` and, in `legacy` mode, filters each `NavCategory`'s `items` down to hrefs in `LEGACY_VISIBLE_HREFS`, then drops any category left with zero items (e.g. Point of Sale disappears entirely, since none of its four pages are on the legacy list).",
+        "Filtering happens only in the sidebar's render — routes, API endpoints, and `RESOURCE_KEYS` are untouched, so a hidden page's URL, its guide slug, and direct links to it all keep working.",
+        "The setting is edited on this page via `useDashboardView().setView()`, a plain `Select` bound to `\"legacy\" | \"new\"`.",
+      ] },
       { t: "h", text: "Auth and session model" },
       { t: "ul", items: ["Credentials are checked against the `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables.", "A successful login issues a signed HMAC cookie named `sb_session` with a 7-day expiry.", "`src/proxy.ts` guards `/dashboard/*`, redirecting unauthenticated requests to `/login`.", "Logout clears `sb_session`."] },
       { t: "p", text: "The user menu in the top bar exposes the current profile and role and the logout action. Per-page settings buttons in the top bar control view-level preferences local to a resource page and are unrelated to this account-level configuration." },
@@ -911,6 +994,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "POS", def: "Point of Sale — selling to customers in person at a physical location." },
           { term: "Register", def: "A till where in-person sales are rung up, opened and closed each shift." },
           { term: "Cash float", def: "The starting cash placed in a register drawer so you can give change." },
+          { term: "Load sheet", def: "A courier handover document grouping the shipments leaving a location together, on the Dispatch page." },
+          { term: "COD", def: "Cash on delivery — payment the courier collects from the customer at drop-off, rather than in advance." },
           { term: "KPI", def: "Key Performance Indicator — a headline number, shown in the stat cards at the top of each page." },
         ],
       },
@@ -934,6 +1019,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "registers.status", def: "`open` or `closed`, with `cashFloat`, `sales`, and `openedBy`." },
           { term: "locations.type", def: "`retail`, `warehouse`, or `popup`; `status` is `active` or `inactive`." },
           { term: "pos-staff.role", def: "`manager`, `associate`, or `cashier`; `status` is `active` or `suspended`; plus `pin`." },
+          { term: "dispatch.status", def: "`draft`, `posted`, or `archived` — also the resource's tab filter. `reconciliation` is `pending` or `reconciled`, independent of `status`." },
           { term: "sb_session", def: "The signed HMAC auth cookie (7-day expiry) checked by `src/proxy.ts` on `/dashboard/*`." },
           { term: "ADMIN_USERNAME / ADMIN_PASSWORD", def: "Env vars holding the single admin credential the login form checks against." },
           { term: "Mock store", def: "`src/lib/seed.ts` (seed) and `src/lib/store.tsx` (React state) — in-memory data, resets on reload." },

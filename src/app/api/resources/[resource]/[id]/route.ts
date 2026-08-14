@@ -4,6 +4,7 @@ import { getResource } from "@/config/resources";
 import { SHOPIFY_WRITERS } from "@/lib/shopify-writes";
 import { isAppOwned, updateAppRow, deleteAppRow } from "@/lib/app-data";
 import { updateAdjustment, deleteAdjustment } from "@/lib/stock-adjustments";
+import { updateLoadSheet, deleteLoadSheet } from "@/lib/dispatch";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,12 @@ export async function PATCH(
     return NextResponse.json({ ok: true, row });
   }
 
+  if (g.resource === "dispatch") {
+    const { row, error } = await updateLoadSheet(g.id, body);
+    if (error) return NextResponse.json({ error }, { status: 422 });
+    return NextResponse.json({ ok: true, row });
+  }
+
   if (!isAppOwned(g.resource)) {
     const writer = SHOPIFY_WRITERS[g.resource];
     if (!writer?.update) {
@@ -62,6 +69,12 @@ export async function DELETE(
 
   if (g.resource === "stock-adjustments") {
     const { error } = await deleteAdjustment(g.id);
+    if (error) return NextResponse.json({ error }, { status: 422 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (g.resource === "dispatch") {
+    const { error } = await deleteLoadSheet(g.id);
     if (error) return NextResponse.json({ error }, { status: 422 });
     return NextResponse.json({ ok: true });
   }

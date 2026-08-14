@@ -10,10 +10,13 @@ import {
   Check,
   ShoppingBag,
   ExternalLink,
+  LayoutDashboard,
 } from "@/components/icons";
 import type { CurrentUser } from "@/lib/auth";
 import { CURRENCIES } from "@/lib/currency";
 import { useCurrency } from "@/components/currency-provider";
+import { useDashboardView } from "@/components/dashboard-view-provider";
+import type { DashboardView } from "@/lib/dashboard-view";
 import {
   Card,
   CardContent,
@@ -55,6 +58,7 @@ const NOTIFICATIONS = [
 
 export function SettingsView({ user }: { user: CurrentUser }) {
   const { currency, setCurrency } = useCurrency();
+  const { view, setView } = useDashboardView();
   const [saved, setSaved] = React.useState(false);
   const [toggles, setToggles] = React.useState<Record<string, boolean>>({
     orders: true,
@@ -140,6 +144,34 @@ export function SettingsView({ user }: { user: CurrentUser }) {
             {saved ? <Check /> : null}
             {saved ? "Saved" : "Save changes"}
           </Button>
+        </CardFooter>
+      </Card>
+
+      {/* Dashboard view */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutDashboard className="size-4 text-primary" /> Dashboard view
+          </CardTitle>
+          <CardDescription>
+            Choose which sidebar pages are shown for this browser.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Dashboard view" half>
+            <Select
+              value={view}
+              onChange={(e) => setView(e.target.value as DashboardView)}
+            >
+              <option value="new">New — show every page</option>
+              <option value="legacy">Legacy — show the original page set only</option>
+            </Select>
+          </Field>
+        </CardContent>
+        <CardFooter className="justify-start">
+          <p className="text-xs text-muted-foreground">
+            Legacy only hides sidebar links — every page stays reachable by its URL.
+          </p>
         </CardFooter>
       </Card>
 

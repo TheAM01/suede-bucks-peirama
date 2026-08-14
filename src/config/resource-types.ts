@@ -66,7 +66,9 @@ export type ColumnType =
   | "currency"
   | "number"
   | "status"
-  | "date";
+  | "date"
+  | "datetime"
+  | "index";
 
 export interface ResourceColumn {
   key: string;
@@ -90,6 +92,13 @@ export interface StatDef {
   compute: (rows: Row[]) => StatResult;
 }
 
+export interface ResourceTabs {
+  /** row key the tabs filter on */
+  field: string;
+  /** tab list, shown after an implicit leading "All" tab */
+  options: { value: string; label: string }[];
+}
+
 export interface ResourceConfig {
   key: string;
   singular: string;
@@ -108,6 +117,8 @@ export interface ResourceConfig {
   lockedHint?: string;
   /** when set, clicking a row opens this detail route instead of the edit drawer */
   rowHref?: (row: Row) => string;
+  /** when set, renders a segmented "All / …" tab strip above the table that filters rows by a field */
+  tabs?: ResourceTabs;
 }
 
 /** Resolve the badge variant for a status value from a resource's field options. */

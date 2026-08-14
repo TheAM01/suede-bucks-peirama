@@ -7,6 +7,8 @@ import { NAV } from "@/config/nav";
 import { Logo, Wordmark } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { logoutAction } from "@/lib/auth-actions";
+import { useDashboardView } from "@/components/dashboard-view-provider";
+import { LEGACY_VISIBLE_HREFS } from "@/lib/dashboard-view";
 import { cn } from "@/lib/utils";
 
 function isActive(pathname: string, href: string) {
@@ -26,6 +28,16 @@ export function Sidebar({
   onCloseMobile: () => void;
 }) {
   const pathname = usePathname();
+  const { view } = useDashboardView();
+
+  // "Legacy" only hides links — every route stays reachable by URL.
+  const visibleNav =
+    view === "legacy"
+      ? NAV.map((cat) => ({
+          ...cat,
+          items: cat.items.filter((item) => LEGACY_VISIBLE_HREFS.has(item.href)),
+        })).filter((cat) => cat.items.length > 0)
+      : NAV;
 
   return (
     <>
@@ -78,7 +90,7 @@ export function Sidebar({
 
         {/* Nav */}
         <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
-          {NAV.map((cat) => (
+          {visibleNav.map((cat) => (
             <div key={cat.label}>
               {!collapsed ? (
                 <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">

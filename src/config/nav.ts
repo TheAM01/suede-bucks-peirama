@@ -20,6 +20,8 @@ import {
   Plug,
   BookOpen,
   SlidersHorizontal,
+  RotateCcw,
+  Truck,
   type IconType,
 } from "@/components/icons";
 
@@ -141,6 +143,20 @@ export const NAV: NavCategory[] = [
         icon: FileText,
         subtitle: "Manually created orders",
         guide: "draft-orders",
+      },
+      {
+        title: "Returns",
+        href: "/dashboard/returns",
+        icon: RotateCcw,
+        subtitle: "Return merchandise and refund handling",
+        guide: "returns",
+      },
+      {
+        title: "Dispatch",
+        href: "/dashboard/dispatch",
+        icon: Truck,
+        subtitle: "Courier load sheets for outgoing shipments",
+        guide: "dispatch",
       },
       {
         title: "Transactions",

@@ -53,6 +53,7 @@ export {
   // catalog / inventory
   CheckCircleIcon as PackageCheck,
   ArchiveBoxXMarkIcon as PackageX,
+  ArchiveBoxIcon as Archive,
   CpuChipIcon as Bot,
   BuildingOfficeIcon as Building2,
   BuildingOffice2Icon as Warehouse,
