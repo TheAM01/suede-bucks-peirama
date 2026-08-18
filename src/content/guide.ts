@@ -1090,6 +1090,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         ],
       },
       { t: "callout", tone: "warning", title: "Why there is no permanent token anymore", text: "Shopify retired the old admin-created apps that handed out permanent 'shpat_' tokens. The current model exchanges your Client ID + Secret for short-lived keys that expire and are refreshed automatically — safer, because a leaked key goes stale on its own. You never manage those keys; SuedeBucks does." },
+      { t: "callout", tone: "warning", title: "\"This app is not approved to access the Order object\"", text: "If pages that touch customer or order data (Orders, Sale Receipts, Invoices, Customers) show this error even with a working connection, it isn't a scope problem — it's Shopify's separate **Protected Customer Data** approval. Any field that's personally identifiable (name, email, phone, address) is blocked app-wide until you request access in the **Partner Dashboard** (Apps → your app → API access → Protected customer data access → Request access). For a custom app built for one store, that's usually approved within minutes to a day, not a long review." },
     ],
     technical: [
       { t: "p", text: "The Integrations page (`/dashboard/integrations`) manages credentials for external services. Shopify is the first-class integration; the connection targets the **Admin GraphQL API** at `https://{store}.myshopify.com/admin/api/{version}/graphql.json`." },
@@ -1105,7 +1106,14 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           "Domain input is normalized (protocol/path stripped, lowercased) and validated against `*.myshopify.com`.",
         ],
       },
-      { t: "callout", tone: "info", title: "This stores credentials, it does not yet sync data", text: "Connecting here validates and saves credentials — the resource pages still read the mock store. Wiring list/detail reads to the Shopify Admin API is Phase 3 of the migration plan, and this page provides the credentials that phase will consume." },
+      {
+        t: "ul",
+        items: [
+          "Three mandatory GDPR compliance webhooks live at `src/app/api/webhooks/{customers-data-request,customers-redact,shop-redact}/route.ts`, backed by `src/lib/shopify-webhooks.ts`. Required by Shopify's API Terms for every app, and checked as part of Protected Customer Data approval.",
+          "Each handler reads the **raw** request body (`req.text()`, not `req.json()`) and verifies it against the `x-shopify-hmac-sha256` header using `verifyShopifyWebhook()` — HMAC-SHA256 of the raw bytes with the app's `clientSecret`, base64-compared with `timingSafeEqual`. A missing/invalid signature is a 401 before the payload is ever parsed.",
+          "This app never persists customer PII of its own — everything is read live from Shopify. `customers/data_request` just logs and acknowledges (nothing to furnish). `customers/redact` drops the customer's id from every segment's `customerIds` list (`redactCustomer()`) — the only place a customer's id is stored at all. `shop/redact` clears every app-owned Mongo collection (`redactShop()`) — this app is single-tenant, so \"the shop's data\" is everything app-owned, not a filtered subset.",
+        ],
+      },
     ],
     deep: [
       {

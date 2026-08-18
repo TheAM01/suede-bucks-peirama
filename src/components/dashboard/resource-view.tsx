@@ -16,6 +16,7 @@ import {
   Plug,
   Lock,
   ArrowRight,
+  ChevronDown,
 } from "@/components/icons";
 import type {
   ResourceColumn,
@@ -150,6 +151,9 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
   const [deleting, setDeleting] = React.useState<Row | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [mutationError, setMutationError] = React.useState<string | null>(null);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = React.useState(false);
+  const [bulkBusy, setBulkBusy] = React.useState(false);
 
   const filtered = React.useMemo(() => {
     if (!config) return [];
@@ -178,9 +182,13 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
     return out;
   }, [rows, search, sort, config, tab]);
 
-  // Reset to first page whenever the search query or active tab changes.
+  // Reset to first page, and drop any bulk selection (one scoped to a filter
+  // that's no longer applied would be confusing to act on), whenever the
+  // search query or active tab changes.
   React.useEffect(() => {
     setPage(1);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelected(new Set());
   }, [search, tab, setPage]);
 
   // Publish result count to the bottom-bar pagination.
@@ -195,6 +203,11 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const notConnected = source === "empty";
+  const selectableOnPage = paged
+    .filter((r) => !(config.rowLocked?.(r) ?? false))
+    .map((r) => r.id);
+  const allOnPageSelected =
+    selectableOnPage.length > 0 && selectableOnPage.every((id) => selected.has(id));
 
   function openCreate() {
     setMutationError(null);
@@ -244,6 +257,53 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
       if (prev.dir === "asc") return { key, dir: "desc" };
       return null;
     });
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAllOnPage() {
+    setSelected((prev) => {
+      if (selectableOnPage.every((id) => prev.has(id))) return new Set();
+      return new Set(selectableOnPage);
+    });
+  }
+  async function handleBulkMove(status: string) {
+    if (!config?.tabs || selected.size === 0) return;
+    setBulkBusy(true);
+    setMutationError(null);
+    const field = config.tabs.field;
+    const ids = Array.from(selected);
+    // Send the full row, not just the changed field: some app-owned resources
+    // (dispatch/return-load-sheets) validate a complete object on update, the
+    // same as a single-row edit submits every field from the drawer form.
+    const results = await Promise.all(
+      ids.map((id) => {
+        const row = rows.find((r) => r.id === id);
+        const patch = { ...(row ?? {}), [field]: status };
+        return store.update(resourceKey, id, patch);
+      }),
+    );
+    setBulkBusy(false);
+    const failed = results.filter((r) => !r.ok).length;
+    setMutationError(failed > 0 ? `${failed} of ${ids.length} couldn't be updated.` : null);
+    setSelected(new Set());
+  }
+  async function handleBulkDelete() {
+    setBulkBusy(true);
+    setMutationError(null);
+    const ids = Array.from(selected);
+    const results = await Promise.all(ids.map((id) => store.remove(resourceKey, id)));
+    setBulkBusy(false);
+    setBulkDeleting(false);
+    const failed = results.filter((r) => !r.ok).length;
+    setMutationError(failed > 0 ? `${failed} of ${ids.length} couldn't be deleted.` : null);
+    setSelected(new Set());
   }
 
   return (
@@ -362,6 +422,17 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                {!readOnly ? (
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      checked={allOnPageSelected}
+                      onChange={toggleAllOnPage}
+                      aria-label="Select all rows on this page"
+                    />
+                  </TableHead>
+                ) : null}
                 {config.columns.map((col) => {
                   if (col.type === "index") {
                     return (
@@ -417,6 +488,19 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
                     )}
                     onClick={() => openRow(row)}
                   >
+                    {!readOnly ? (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {!locked ? (
+                          <input
+                            type="checkbox"
+                            className="size-4 accent-primary"
+                            checked={selected.has(row.id)}
+                            onChange={() => toggleOne(row.id)}
+                            aria-label={`Select row ${rowIndex + 1}`}
+                          />
+                        ) : null}
+                      </TableCell>
+                    ) : null}
                     {config.columns.map((col) => (
                       <TableCell
                         key={col.key}
@@ -476,6 +560,51 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
         )}
       </Card>
 
+      {/* Bulk action bar — sticky just above the bottom bar, shown once something's selected */}
+      {!readOnly && selected.size > 0 ? (
+        <div className="sticky bottom-8 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
+          <p className="text-sm font-medium">
+            {selected.size} {selected.size === 1 ? "record" : "records"} selected
+          </p>
+          <div className="flex items-center gap-2">
+            {config.tabs ? (
+              <Menu>
+                <MenuTrigger>
+                  <Button variant="outline" size="sm" disabled={bulkBusy}>
+                    Move to
+                    <ChevronDown className="size-3.5" />
+                  </Button>
+                </MenuTrigger>
+                <MenuContent width="w-48">
+                  {config.tabs.options.map((opt) => (
+                    <MenuItem key={opt.value} onSelect={() => handleBulkMove(opt.value)}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </MenuContent>
+              </Menu>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelected(new Set())}
+              disabled={bulkBusy}
+            >
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleting(true)}
+              disabled={bulkBusy}
+            >
+              <Trash2 />
+              Delete
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Create / edit drawer (app-owned resources only) */}
       <Drawer
         open={drawerOpen}
@@ -521,6 +650,15 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
         onConfirm={handleDelete}
         title={`Delete this ${config.singular.toLowerCase()}?`}
         description="This permanently removes the record."
+      />
+
+      <ConfirmDialog
+        open={bulkDeleting}
+        onCancel={() => setBulkDeleting(false)}
+        onConfirm={handleBulkDelete}
+        title={`Delete ${selected.size} ${selected.size === 1 ? config.singular.toLowerCase() : config.plural.toLowerCase()}?`}
+        description="This permanently removes these records."
+        confirmLabel={bulkBusy ? "Deleting…" : "Delete"}
       />
     </div>
   );
