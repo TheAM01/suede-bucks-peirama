@@ -103,4 +103,6 @@ export {
   BellIcon as Bell,
   MoonIcon as Moon,
   SunIcon as Sun,
+  DocumentCheckIcon as Invoice,
+  ArrowUturnDownIcon as PackageReturn,
 } from "@heroicons/react/24/outline";

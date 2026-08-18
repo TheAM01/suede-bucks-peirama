@@ -13,6 +13,10 @@ export const APP_OWNED_COLLECTIONS: Record<string, string> = {
   registers: "app_registers",
   "pos-staff": "app_pos_staff",
   segments: "app_segments",
+  returns: "app_returns",
+  packages: "app_packages",
+  shipments: "app_shipments",
+  leads: "app_leads",
 };
 
 export function isAppOwned(resource: string): boolean {

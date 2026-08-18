@@ -112,6 +112,22 @@ function Cell({
       const { label, variant } = statusVariant(config, col.key, val);
       return <Badge variant={variant}>{label}</Badge>;
     }
+    case "tags": {
+      const tags = Array.isArray(val) ? val.filter((t): t is string => typeof t === "string") : [];
+      if (tags.length === 0) return <span className="text-muted-foreground">—</span>;
+      const shown = tags.slice(0, 3);
+      const overflow = tags.length - shown.length;
+      return (
+        <div className="flex max-w-xs flex-wrap items-center gap-1">
+          {shown.map((t) => (
+            <Badge key={t} variant="outline">
+              {t}
+            </Badge>
+          ))}
+          {overflow > 0 ? <Badge variant="secondary">+{overflow}</Badge> : null}
+        </div>
+      );
+    }
     default:
       return <span>{String(val ?? "—")}</span>;
   }

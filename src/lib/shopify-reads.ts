@@ -116,10 +116,15 @@ async function readOrders(): Promise<ShopifyReadResult> {
   const q = `{
     orders(first: 100, sortKey: CREATED_AT, reverse: true) {
       nodes {
-        id name createdAt sourceName note subtotalLineItemsQuantity
-        displayFinancialStatus displayFulfillmentStatus
+        id name createdAt sourceName note subtotalLineItemsQuantity tags
+        displayFinancialStatus displayFulfillmentStatus paymentGatewayNames
         customer { displayName }
+        shippingAddress { city }
+        subtotalPriceSet { shopMoney { amount } }
+        totalDiscountsSet { shopMoney { amount } }
+        totalShippingPriceSet { shopMoney { amount } }
         totalPriceSet { shopMoney { amount } }
+        fulfillments(first: 5) { trackingInfo { company } }
       }
     }
   }`;
@@ -141,18 +146,68 @@ async function readOrders(): Promise<ShopifyReadResult> {
     scheduled: "unfulfilled",
     on_hold: "unfulfilled",
   };
-  const rows = nodes(res.data, "orders").map((o): Row => ({
-    id: gid(o.id),
-    number: str(o.name),
-    customer: str(get(o, "customer", "displayName")) || "Guest",
-    total: num(get(o, "totalPriceSet", "shopMoney", "amount")),
-    items: num(o.subtotalLineItemsQuantity),
-    payment: payMap[lower(o.displayFinancialStatus)] ?? "pending",
-    fulfillment: fulMap[lower(o.displayFulfillmentStatus)] ?? "unfulfilled",
-    channel: lower(o.sourceName) === "pos" ? "pos" : "online",
-    createdAt: date(o.createdAt),
-    notes: str(o.note),
-  }));
+  const rows = nodes(res.data, "orders").map((o): Row => {
+    const fulfillments = Array.isArray(o.fulfillments) ? o.fulfillments : [];
+    const courier = fulfillments
+      .map((f) => str(get(f, "trackingInfo", "company")))
+      .find((c) => c);
+    return {
+      id: gid(o.id),
+      number: str(o.name),
+      customer: str(get(o, "customer", "displayName")) || "Guest",
+      city: str(get(o, "shippingAddress", "city")),
+      courier: courier || "",
+      gateway: Array.isArray(o.paymentGatewayNames)
+        ? o.paymentGatewayNames.map(str).filter(Boolean).join(", ")
+        : "",
+      tags: Array.isArray(o.tags) ? o.tags.map(str).filter(Boolean) : [],
+      amount: num(get(o, "subtotalPriceSet", "shopMoney", "amount")),
+      discount: num(get(o, "totalDiscountsSet", "shopMoney", "amount")),
+      shipping: num(get(o, "totalShippingPriceSet", "shopMoney", "amount")),
+      total: num(get(o, "totalPriceSet", "shopMoney", "amount")),
+      items: num(o.subtotalLineItemsQuantity),
+      payment: payMap[lower(o.displayFinancialStatus)] ?? "pending",
+      fulfillment: fulMap[lower(o.displayFulfillmentStatus)] ?? "unfulfilled",
+      channel: lower(o.sourceName) === "pos" ? "pos" : "online",
+      createdAt: date(o.createdAt),
+      notes: str(o.note),
+    };
+  });
+  return { rows };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Invoices are a computed view over orders — no separate Shopify object, no separate data fetch. Overdue is a heuristic: unpaid and more than 3 days old. */
+async function readInvoices(): Promise<ShopifyReadResult> {
+  const q = `{
+    orders(first: 100, sortKey: CREATED_AT, reverse: true) {
+      nodes {
+        id name createdAt subtotalLineItemsQuantity displayFinancialStatus
+        customer { displayName }
+        totalPriceSet { shopMoney { amount } }
+      }
+    }
+  }`;
+  const res = await shopifyQuery(q);
+  if (!res.ok) return { rows: [], error: res.error };
+  const now = Date.now();
+  const rows = nodes(res.data, "orders").map((o): Row => {
+    const paid = lower(o.displayFinancialStatus) === "paid";
+    const createdAt = str(o.createdAt);
+    const ageMs = createdAt ? now - new Date(createdAt).getTime() : 0;
+    const status = paid ? "paid" : ageMs > 3 * DAY_MS ? "overdue" : "unpaid";
+    return {
+      id: gid(o.id),
+      invoiceNumber: `${str(o.name)}-IN1`,
+      orderNumber: str(o.name),
+      company: str(get(o, "customer", "displayName")) || "Guest",
+      quantity: num(o.subtotalLineItemsQuantity),
+      total: num(get(o, "totalPriceSet", "shopMoney", "amount")),
+      status,
+      invoiceDate: date(o.createdAt),
+      dueDate: date(o.createdAt),
+    };
+  });
   return { rows };
 }
 
@@ -398,6 +453,8 @@ export const SHOPIFY_READERS: Record<string, () => Promise<ShopifyReadResult>> =
   products: readProducts,
   customers: readCustomers,
   orders: readOrders,
+  "sale-receipts": readOrders,
+  invoices: readInvoices,
   collections: readCollections,
   inventory: readInventory,
   categories: readCategories,

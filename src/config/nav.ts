@@ -22,6 +22,12 @@ import {
   SlidersHorizontal,
   RotateCcw,
   Truck,
+  Receipt,
+  PackageCheck,
+  Send,
+  Invoice,
+  PackageReturn,
+  UserPlus,
   type IconType,
 } from "@/components/icons";
 
@@ -138,6 +144,34 @@ export const NAV: NavCategory[] = [
         guide: "orders",
       },
       {
+        title: "Sale Receipts",
+        href: "/dashboard/sale-receipts",
+        icon: Receipt,
+        subtitle: "Printable receipts for completed sales",
+        guide: "sale-receipts",
+      },
+      {
+        title: "Packages",
+        href: "/dashboard/packages",
+        icon: PackageCheck,
+        subtitle: "Packing status for each order's shipment",
+        guide: "packages",
+      },
+      {
+        title: "Shipments",
+        href: "/dashboard/shipments",
+        icon: Send,
+        subtitle: "Courier tracking for every parcel in transit",
+        guide: "shipments",
+      },
+      {
+        title: "Invoices",
+        href: "/dashboard/invoices",
+        icon: Invoice,
+        subtitle: "One invoice per order, generated automatically",
+        guide: "invoices",
+      },
+      {
         title: "Draft Orders",
         href: "/dashboard/draft-orders",
         icon: FileText,
@@ -157,6 +191,20 @@ export const NAV: NavCategory[] = [
         icon: Truck,
         subtitle: "Courier load sheets for outgoing shipments",
         guide: "dispatch",
+      },
+      {
+        title: "Return Load Sheets",
+        href: "/dashboard/return-load-sheets",
+        icon: PackageReturn,
+        subtitle: "Courier handover sheets for incoming returns",
+        guide: "return-load-sheets",
+      },
+      {
+        title: "Leads",
+        href: "/dashboard/leads",
+        icon: UserPlus,
+        subtitle: "Prospective wholesale and B2B buyers",
+        guide: "leads",
       },
       {
         title: "Transactions",

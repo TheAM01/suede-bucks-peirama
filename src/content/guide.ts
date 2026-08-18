@@ -470,30 +470,38 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     title: "Orders",
     category: "Sales",
     everyday: [
-      { t: "p", text: "The **Orders** page is every sale that has come in, online and in-store. Each row shows the order number, the customer, the total, whether it is paid, whether it has shipped, which channel it came through, and the date." },
+      { t: "p", text: "The **Orders** page is every sale that has come in, online and in-store, read live from Shopify. Each row shows the order number, the customer, where they are, which courier is carrying it, whether it is paid, whether it has shipped, which channel it came through, the money breakdown, any tags, and the date." },
+      { t: "p", text: "Above the table, tabs let you filter by **Order status** — the operational stage you move an order through yourself (Draft, Active, Finalized, Packaged, Fulfilled, Delivered, Returned, Canceled, Pending CC, Duplicate, Exception, Booking Failed, On Hold). This is separate from Shopify's own Payment and Fulfillment columns — an order can be Shopify-`Fulfilled` and still sit in your own `Returned` bucket if that's where the operational workflow has it." },
       {
         t: "dl",
         items: [
           { term: "Order # / Customer", def: "The order's reference and who placed it." },
-          { term: "Total", def: "The full amount charged." },
+          { term: "Order status", def: "Your own operational stage for the order — also which tab it appears under. Click into an order and edit it to change this." },
+          { term: "City / Courier", def: "The shipping destination city, and which courier's tracking is on the order's shipment, if any." },
           { term: "Payment", def: "**Paid**, **Pending** (not yet paid), or **Refunded**." },
           { term: "Fulfillment", def: "**Fulfilled** (all shipped), **Partial** (some shipped), or **Unfulfilled** (nothing shipped yet)." },
           { term: "Channel", def: "**Online** (web store) or **POS** (bought in person)." },
-          { term: "Items / Notes", def: "How many items are on the order, plus a notes box." },
+          { term: "Amount / Disc. / Shipping / Net Total", def: "The line-item subtotal, discount applied, shipping charged, and the final total actually charged." },
+          { term: "Gateway", def: "How the order was paid — e.g. Cash on Delivery, a payment processor's name." },
+          { term: "Tags", def: "Any tags on the order in Shopify — used by whatever apps or staff workflow adds them (e.g. a COD-confirmation or risk-flagging app)." },
+          { term: "Qty / Notes", def: "How many items are on the order, plus a notes box." },
         ],
       },
-      { t: "ol", items: ["Open Sales then Orders.", "Sort by Fulfillment or filter with search to find what needs shipping.", "Click an order to open its own page, with the full step-by-step history.", "Once you have shipped it, update Fulfillment to Fulfilled.", "Add a note if anything about the order is unusual."] },
+      { t: "ol", items: ["Open Sales then Orders.", "Use the tabs along the top to see orders in one operational stage at a time — e.g. click Packaged to see only what's boxed and waiting to go out.", "Sort by Fulfillment or filter with search to find what needs shipping.", "Click an order's row to open the edit drawer (or click through to its own page for the full timeline).", "Change Order status in the drawer to move it into the right tab — e.g. from Active to Packaged once it's boxed, or to Booking Failed if the courier couldn't book it.", "Once you have shipped it, update Fulfillment to Fulfilled — this is separate from Order status and reflects Shopify's own shipping state.", "Add a note if anything about the order is unusual."] },
       { t: "callout", tone: "info", title: "Click an order to see every step", text: "The list only has room for the current status. Opening an order shows its **Timeline** — placed, each payment, each shipment with its tracking number, deliveries, refunds, and cancellation — newest first, alongside the items, the shipping address, and the payment breakdown." },
       { t: "callout", tone: "warning", title: "Unfulfilled orders are your to-do list", text: "The **Unfulfilled** count in the stat cards is work waiting on you. Clear it regularly so nothing that is paid for goes unshipped." },
+      { t: "callout", tone: "warning", title: "Order status needs a database connection to save", text: "Unlike everything else on this page (which is read live from Shopify), Order status is stored separately in this app's own database. Without MongoDB connected, changing it in the drawer will fail to save — the tabs will still work, but every order will show as Active until a database is reachable." },
     ],
     technical: [
-      { t: "p", text: "The orders resource is keyed `orders`; search covers `number` and `customer`. Fields: `number`, `customer`, `total`, `items`, `payment`, `fulfillment`, `channel`, `createdAt`, `notes`." },
-      { t: "ul", items: ["`payment` is one of `paid`, `pending`, or `refunded`.", "`fulfillment` is one of `fulfilled`, `partial`, or `unfulfilled`.", "`channel` is one of `online` or `pos`."] },
+      { t: "p", text: "The orders resource is keyed `orders`; search covers `number` and `customer`. Row shape: `number`, `customer`, `opsStatus`, `city`, `courier`, `gateway`, `tags`, `amount`, `discount`, `shipping`, `total`, `items`, `payment`, `fulfillment`, `channel`, `createdAt`, `notes`. `number`, `customer`, `total`, `items`, `opsStatus`, `payment`, `fulfillment`, `channel`, `createdAt`, and `notes` are in `fields` (and therefore editable in the drawer). `city`/`courier`/`gateway`/`tags`/`amount`/`discount`/`shipping` are `columns`-only, display derived straight from Shopify on every read — `SHOPIFY_WRITERS.orders.update` only ever sends `note` to Shopify; `opsStatus` is the one editable field that goes somewhere else entirely (see below)." },
+      { t: "ul", items: ["`payment` is one of `paid`, `pending`, or `refunded`.", "`fulfillment` is one of `fulfilled`, `partial`, or `unfulfilled`.", "`channel` is one of `online` or `pos`.", "`tags` renders with the new `\"tags\"` `ColumnType` — up to 3 badge chips plus a `+N` overflow badge, added in `resource-view.tsx` alongside the existing `\"status\"`/`\"index\"` types."] },
       { t: "p", text: "KPIs: Orders (count with delta), Revenue (`sum(total)` with delta), Unfulfilled (`fulfillment === 'unfulfilled'`), and Average order value (`sum(total) / count`)." },
-      { t: "callout", tone: "info", title: "Payment and fulfilment are independent axes", text: "An order can be `paid` but `unfulfilled`, or `fulfilled` but `refunded`. The two statuses do not gate each other in the mock, so treat them as separate lifecycles rather than a single linear status." },
-      { t: "p", text: "Maps to a Shopify `Order` with financial status (payment) and fulfilment status. `channel` maps to the sales channel (online store vs. Shopify POS). Transactions for an order live in the separate transactions resource, referenced by order number." },
-      { t: "p", text: "The row list carries only two snapshot enums (`displayFinancialStatus`, `displayFulfillmentStatus`). The history behind them is a separate per-order read: `orders` declares `rowHref`, so a row click routes to `/dashboard/orders/[id]`, which fetches `/api/orders/[id]` → `readOrderDetail()` in `src/lib/shopify-order-detail.ts`." },
+      { t: "callout", tone: "info", title: "Payment and fulfilment are independent axes", text: "An order can be `paid` but `unfulfilled`, or `fulfilled` but `refunded`. The two statuses do not gate each other, so treat them as separate lifecycles rather than a single linear status." },
+      { t: "p", text: "Maps to a Shopify `Order`. `payment`/`fulfillment` come from `displayFinancialStatus`/`displayFulfillmentStatus`; `channel` from `sourceName`; `city` from `shippingAddress.city`; `courier` from the first fulfillment's `trackingInfo.company` (native Shopify tracking data, not a separately-assigned field — an order with no fulfillment yet shows no courier); `gateway` from `paymentGatewayNames`; `amount`/`discount`/`shipping`/`total` from `subtotalPriceSet`/`totalDiscountsSet`/`totalShippingPriceSet`/`totalPriceSet` respectively; `tags` from the order's own Shopify tags verbatim (whatever wrote them — this app never writes tags itself). Transactions for an order live in the separate transactions resource, referenced by order number." },
+      { t: "p", text: "The row list carries only two snapshot enums (`displayFinancialStatus`, `displayFulfillmentStatus`) plus the summary fields above. The full history behind them is a separate per-order read: `orders` declares `rowHref`, so a row click routes to `/dashboard/orders/[id]`, which fetches `/api/orders/[id]` → `readOrderDetail()` in `src/lib/shopify-order-detail.ts`." },
       { t: "ul", items: ["That one GraphQL query pulls `lineItems`, `fulfillments` (with `trackingInfo`), `transactions`, `refunds`, and Shopify's `events` log.", "`buildTimeline()` merges every dated record into one list sorted newest-first, tagged by kind (`placed`, `payment`, `fulfillment`, `delivery`, `refund`, `cancelled`, `event`) which drives the icon and accent per step.", "It is read-only and fetched per visit — no local history is stored, so the timeline is exactly what Shopify reports at that moment.", "Needs the `read_orders` and `read_fulfillments` scopes; a scope or schema failure surfaces as an error card, never partial or invented history."] },
+      { t: "p", text: "`opsStatus` is the operational status layer: an app-owned overlay in `src/lib/order-ops.ts`, MongoDB collection `app_order_ops`, **one document per order that has ever been touched, keyed by the Shopify order id as `_id`** — a plain upsert, not the ObjectId-per-row pattern `app-data.ts` uses elsewhere. An order with no document reads as `active`, the default. `GET /api/resources/orders` calls `attachOrderOps()` to merge it onto every row after the Shopify read; `PATCH /api/resources/orders/[id]` calls both `SHOPIFY_WRITERS.orders.update()` (the `note` field, to Shopify) and `setOrderOps()` (the `opsStatus` field, to Mongo) from the same edit — two independent backends updated by one form submit, a pattern that didn't exist anywhere else in the resource engine before this." },
+      { t: "callout", tone: "info", title: "A deliberate simplification of a richer real-world model", text: "Reference systems that run this kind of order-status tab bar (checked live against one) actually track this as multiple independent badges — a shipping-pipeline stage (Draft → Packaged → Fulfilled → Delivered), payment state, and a separate exception/return flag that can be true regardless of pipeline stage. Concretely: an order can show `Fulfilled` on its shipping badge while still being filed under a `Returned` tab, because the return is tracked independently of whether it physically shipped. This app instead uses one flat `opsStatus` per order — every tab is mutually exclusive. That's simpler to build and use, but means an order can't simultaneously be, say, `Fulfilled` and `Returned` here the way it could in a system with layered status fields. If that turns out to matter, the fix is splitting `opsStatus` into a pipeline-stage field plus a separate boolean-ish exception field, both stored in the same `app_order_ops` document." },
     ],
     deep: [
       {
@@ -552,12 +560,30 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     title: "Returns",
     category: "Sales",
     everyday: [
-      { t: "p", text: "The **Returns** page will be where you handle merchandise customers send back — return authorizations, refunds, and getting stock back into Inventory. It isn't built out yet, so right now the page just holds its place in the sidebar." },
-      { t: "callout", tone: "info", title: "Coming soon", text: "There is nothing to do here yet. Once returns are scoped, this section will explain how to process one step by step." },
+      { t: "p", text: "The **Returns** page is where you track merchandise customers send back — from the moment a return is requested through refund and restock. It shares one page with **Dispatch** (a switch at the top flips between the two) because both are about a shipment's life after the sale, just moving in opposite directions." },
+      {
+        t: "dl",
+        items: [
+          { term: "RMA #", def: "The return's own reference number, e.g. **RMA001** — you assign this yourself when you open the return." },
+          { term: "Order", def: "The original order number this return belongs to, and the customer underneath it." },
+          { term: "Reason", def: "Why it's coming back — **Damaged**, **Wrong item**, **Changed mind**, **Defective**, **Late delivery**, or **Other**." },
+          { term: "Status", def: "**Requested → Approved → In Transit → Received → Refunded**, or **Rejected** if you decline it — also which tab it appears under." },
+          { term: "Refund Amount", def: "How much is being (or was) refunded to the customer." },
+          { term: "Restock Location", def: "Which store or warehouse the item goes back into once received." },
+        ],
+      },
+      { t: "ol", items: ["Open Sales then Returns (or flip to it from the Dispatch switch).", "Click New return and enter the RMA #, order #, and reason.", "Set Approved once you've agreed to take it back, and pick a pickup courier if one is collecting it.", "Move it to In Transit once it's on its way, then Received once it's back in hand.", "Set the refund amount and mark it Refunded once the money has gone back — or Rejected if you're declining the return."] },
+      { t: "callout", tone: "info", title: "Restocking isn't automatic yet", text: "Setting Restock Location records where the item should go back into stock, but it doesn't yet post an inventory adjustment the way completing a Stock Adjustment does. Update Inventory separately for now." },
     ],
     technical: [
-      { t: "p", text: "The `/dashboard/returns` route is a static placeholder page (`src/app/dashboard/returns/page.tsx`) — it renders an `EmptyState` and is not backed by a resource in `src/config/resources.ts` or any data module. It exists so the nav entry and guide slug are in place ahead of the real design." },
-      { t: "callout", tone: "warning", title: "No data model defined yet", text: "There is intentionally no schema, API route, or storage for returns. When the scope is defined, follow the pattern in `src/lib/dispatch.ts` or `src/lib/stock-adjustments.ts` if it needs an audited document, or `src/lib/app-data.ts` if plain CRUD suffices." },
+      { t: "p", text: "The resource is keyed `returns` and is **app-owned**: stored in MongoDB (`app_returns`) via the generic `src/lib/app-data.ts` CRUD path (`APP_OWNED_COLLECTIONS`), same as `registers` or `segments` — unlike `dispatch`, it doesn't need a server-generated reference number or a one-way timestamp, so it doesn't need its own module. Search covers `reference`, `orderNumber`, and `customer`." },
+      { t: "ul", items: [
+        "`status` drives the resource's `tabs` config: `requested`, `approved`, `in_transit`, `received`, `refunded`, `rejected` — six stages instead of dispatch's three, because a return has more real-world checkpoints (pickup, arrival, settlement) than a load sheet does.",
+        "`reason` and `status` are independent `status`-type fields with their own badge variants — a return can be `Damaged` and still sit in any status.",
+        "`refundAmount` is a plain hand-entered currency field; there is no link back to the original order's Shopify refund/transaction record, so it can drift from what's actually been refunded in Shopify if not kept in sync.",
+        "`restockLocation` and `courier` reuse the same `LOCATION_OPTIONS` / `COURIER_OPTIONS` arrays `dispatch` uses, defined once in `src/config/resources.ts` rather than duplicated per resource.",
+      ] },
+      { t: "callout", tone: "warning", title: "No link to Shopify's own refund records", text: "This is a standalone operational tracker, not a mirror of Shopify's refund/return objects — it doesn't read or write anything on the Shopify order. If a return here and a Shopify refund disagree, Shopify's transaction record is the source of truth for what money actually moved." },
     ],
   },
 
@@ -569,6 +595,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     everyday: [
       { t: "p", text: "The **Dispatch** page is your courier handover book. When a batch of orders is ready to leave a location with a courier, you group them into a **load sheet** — one document that says which courier is collecting, how many shipments, their combined value and weight, and any cash-on-delivery (COD) being carried." },
       { t: "p", text: "Sheets move through three stages, shown as tabs at the top of the table: **Draft** (still being put together), **Posted** (handed to the courier), and **Archived** (kept for records once settled)." },
+      { t: "callout", tone: "info", title: "Shares a page with Returns", text: "A switch at the top of this page flips between Dispatch and Returns — outgoing and incoming shipments, side by side. Each keeps its own tabs, table, and stats; only the top-level switch is shared." },
       {
         t: "dl",
         items: [
@@ -596,6 +623,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         "`totalShipments`, `totalAmount`, `codAmount`, and `weight` are plain hand-entered numeric/currency fields, not derived from a line-item list — consistent with how `collections.products` or `registers.sales` are stored counts elsewhere in this app.",
         "`createdAt` is set server-side at creation; `datePosted` is stamped server-side the first time `status` becomes `posted` and is never overwritten by later edits (including a later `archived` transition) — enforced in `updateLoadSheet()` by checking `!existing.datePosted` before setting it.",
         "`courier` and `location` are plain `select` fields (fixed option lists), not `optionsFrom` a live resource — dispatch doesn't post anything to Shopify, so it doesn't need a real location GID the way `stock-adjustments`' facility field does.",
+        "`/dashboard/dispatch` and `/dashboard/returns` are both literal route files rendering the same `DispatchReturnsView` client component (`src/components/dashboard/dispatch-returns-view.tsx`), which puts a `Segmented` switch above a `key`-remounted `ResourceView` for whichever resource (`dispatch` or `returns`) is active. Switching the segment calls `router.replace()` to the other URL so the sidebar highlight and the bottom bar's guide link — both driven by `pathname` — stay correct without a full navigation.",
       ] },
       { t: "p", text: "The `#` column uses the new `\"index\"` `ColumnType` — a display-only row-position number (1, 2, 3, ...) computed from the sorted/filtered/paginated row list in `resource-view.tsx`, not a stored field. `Date Created` / `Date Posted` use the new `\"datetime\"` `ColumnType` (`formatDateTime()`), which is why they render with a time (e.g. `Jul 30, 2026, 4:20 PM`) unlike the date-only columns elsewhere." },
       { t: "callout", tone: "info", title: "Modelled on courier load sheets, terminology may evolve", text: "The **Reconciliation** field is a best-guess interpretation (whether courier-collected COD has been settled with the store) — if your courier workflow means something different by it, the field and its options in `src/config/resources.ts` are easy to relabel." },
@@ -610,6 +638,136 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { t: "p", text: "`ResourceConfig.tabs` (`{ field, options }`) is a small generic addition to the resource engine, not a Dispatch-only hack: any resource can opt in by setting `tabs` in `src/config/resources.ts`, and `resource-view.tsx` renders the `Segmented` control and filters `rows[field]` accordingly, on top of (not instead of) the existing search and per-column sort. The KPI row is intentionally unaffected by the active tab — stats always compute over the full row set, same as search." },
         ],
       },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "sale-receipts",
+    title: "Sale Receipts",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "**Sale Receipts** is the same underlying sales data as Orders, shown as a simpler receipt-style list — order number, total, payment, gateway, channel, and date. Use it when you just need to look up or print what a customer was charged, without the operational status tabs Orders carries." },
+      { t: "ol", items: ["Open Sales then Sale Receipts.", "Search by order number or customer to find a specific sale.", "Click a row to open the full order page if you need more detail than the receipt view shows."] },
+      { t: "callout", tone: "info", title: "Not a separate ledger", text: "This isn't its own record — it's the same Shopify order data as the Orders page, read again and displayed with fewer columns. Editing an order's core fields (customer, total, payment) here or on Orders changes the same underlying order." },
+    ],
+    technical: [
+      { t: "p", text: "The resource is keyed `sale-receipts`; search covers `number` and `customer`. It's registered in `SHOPIFY_READERS` pointing at the exact same `readOrders()` function `orders` uses — no separate query, no separate row shape, just a lighter `columns`/`fields` set in `src/config/resources.ts` over identical rows." },
+      { t: "callout", tone: "warning", title: "No opsStatus here", text: "Because the GET route only calls `attachOrderOps()` when `resource === \"orders\"`, rows read through `sale-receipts` never get the operational-status overlay — there's no equivalent to Orders' status tabs on this page, by design." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "invoices",
+    title: "Invoices",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "**Invoices** shows one invoice per order, generated automatically — you don't create these by hand. Tabs let you filter to what's Unpaid, Paid, or Overdue." },
+      {
+        t: "dl",
+        items: [
+          { term: "Invoice # / Order #", def: "The invoice's own reference (the order number with `-IN1` appended) and the order it bills." },
+          { term: "Status", def: "**Unpaid**, **Paid**, or **Overdue** — Overdue isn't set by hand, it's computed (see below)." },
+          { term: "Quantity / Total", def: "How many items the order has, and what the invoice is for." },
+          { term: "Invoice Date / Due Date", def: "When the invoice was raised and when it's due." },
+        ],
+      },
+      { t: "ol", items: ["Open Sales then Invoices.", "Click Unpaid to see what customers still owe.", "Click Overdue to see what's unpaid and aging — follow up on these first."] },
+      { t: "callout", tone: "warning", title: "Overdue is a rule, not a field", text: "An invoice shows Overdue once it's unpaid and more than 3 days old — there's no due-date logic beyond that heuristic yet. If your actual payment terms are different, that 3-day window is the one place to change it." },
+    ],
+    technical: [
+      { t: "p", text: "The resource is keyed `invoices`; search covers `invoiceNumber`, `orderNumber`, and `company`. It's entirely a **computed view over orders** — `readInvoices()` in `src/lib/shopify-reads.ts` runs its own light GraphQL query (name, customer, quantity, total, `displayFinancialStatus`, `createdAt`) rather than reusing `readOrders()`, since it needs none of the order-list columns and doesn't want to over-fetch." },
+      { t: "ul", items: ["`invoiceNumber` is derived client-side as `` `${order.name}-IN1` `` — there's no real Shopify invoice object or counter behind it.", "`status` is computed once per row: `paid` if `displayFinancialStatus` is `paid`; otherwise `overdue` if the order is more than 3 days old, else `unpaid`. This makes it a plain discrete value the generic `tabs` filter can match on — no date-range filtering logic needed in the UI.", "`dueDate` is currently always equal to `invoiceDate` (same-day terms) — there's no per-customer payment-terms concept to compute a real due date from yet.", "Read-only: `invoices` has no entry in `SHOPIFY_WRITERS`, so the drawer can open but saving will 405."] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "packages",
+    title: "Packages",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "**Packages** tracks the packing stage for each order's shipment — has it been boxed up, is it dispatched, did booking with the courier fail. Tabs move roughly in the order packing actually happens: Draft, In Pickup And Packing, Packed, Dispatched, plus On Hold / Canceled / Duplicate / Booking Failed for anything that doesn't go smoothly." },
+      {
+        t: "dl",
+        items: [
+          { term: "Order # / Customer", def: "Which order this package belongs to, and who it's for." },
+          { term: "City / Location", def: "Where it's shipping to, and which of your locations is packing it." },
+          { term: "Courier / Consignment #", def: "Which courier is booked, and their tracking/consignment number for this parcel once booked." },
+          { term: "Status", def: "Where the package is in the packing pipeline — also which tab it's under." },
+        ],
+      },
+      { t: "ol", items: ["Open Sale Orders then Packages.", "Click In Pickup And Packing to see what your team should be boxing right now.", "Once boxed, move it to Packed.", "Once handed to the courier, move it to Dispatched and fill in the Consignment #.", "If the courier can't book it, mark it Booking Failed and follow up rather than leaving it stuck in an earlier stage."] },
+    ],
+    technical: [
+      { t: "p", text: "The resource is keyed `packages`, app-owned via the generic `src/lib/app-data.ts` CRUD path (`APP_OWNED_COLLECTIONS.packages = \"app_packages\"`) — plain MongoDB documents, no bespoke module, no server-generated reference number (staff enter `consignmentNumber` by hand once the courier provides one, same pattern as `returns`' RMA #). Search covers `orderNumber`, `customer`, and `consignmentNumber`." },
+      { t: "ul", items: ["`status` drives `tabs`: `draft`, `in_pickup_and_packing`, `packed`, `dispatched`, `on_hold`, `canceled`, `duplicate`, `booking_failed`.", "`location` and `courier` reuse the shared `LOCATION_OPTIONS` / `COURIER_OPTIONS` arrays in `src/config/resources.ts`, same as `dispatch`/`returns`.", "Not linked to Shopify fulfillments — `orderNumber` is a free-text field, not a resolved order id, so nothing here writes back to Shopify or reads Shopify's own fulfillment record."] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "shipments",
+    title: "Shipments",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "**Shipments** is the courier-tracking view — once a package is dispatched, this is where you follow it from Booked through to Delivered (or through whatever goes wrong: a failed delivery attempt, a return in progress). It has the longest tab list on any page here because courier tracking has the most real-world states." },
+      {
+        t: "dl",
+        items: [
+          { term: "Ref # / Order #", def: "This shipment's own reference, and the order it's carrying." },
+          { term: "City / Country", def: "The delivery destination." },
+          { term: "Courier / Consignment #", def: "Who's carrying it, and their tracking number." },
+          { term: "Status", def: "Where the parcel is right now — Pending through Delivered, or one of the exception states (Delivery Attempted, Shipper Advice, Re-attempt, Return Request, No Response, Awaiting Return, Returned)." },
+        ],
+      },
+      { t: "ol", items: ["Open Sale Orders then Shipments.", "Click In Transit or Out For Delivery to see what's actively moving.", "If a courier reports a failed attempt, move it to Delivery Attempted or Re-attempt rather than leaving it In Transit.", "Once the customer has it, mark it Delivered.", "If it's coming back, move it through Return Request → Awaiting Return → Returned."] },
+      { t: "callout", tone: "info", title: "This is status tracking, not booking", text: "Nothing on this page actually books a shipment with a courier's API — Ref #, Consignment #, and Status are all recorded by hand (or however your courier-booking integration is wired up later). See the guide entry for Packages, which covers the step just before this one." },
+    ],
+    technical: [
+      { t: "p", text: "The resource is keyed `shipments`, app-owned via `src/lib/app-data.ts` (`APP_OWNED_COLLECTIONS.shipments = \"app_shipments\"`). Search covers `reference`, `orderNumber`, `customer`, and `consignmentNumber`." },
+      { t: "ul", items: ["`status` drives `tabs` — 14 values: `pending`, `booked`, `ready_to_dispatch`, `dispatched`, `in_transit`, `out_for_delivery`, `delivered`, `delivery_attempted`, `shipper_advice`, `re_attempt`, `return_request`, `no_response`, `awaiting_return`, `returned`.", "`dispatchLocation` and `courier` reuse the shared `LOCATION_OPTIONS` / `COURIER_OPTIONS` arrays.", "`country` defaults to `\"Pakistan\"` via `defaultValue` on the field — this app's operational data is Pakistan-market-specific end to end (see the courier list itself: Leopards, TCS, M&P, PostEx, Trax, Call Courier)."] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "return-load-sheets",
+    title: "Return Load Sheets",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "**Return Load Sheets** is Dispatch's mirror image — instead of grouping shipments going out with a courier, it groups returns a courier is handing back to you. Same idea, same fields, opposite direction: Draft while you're expecting it, Posted once the courier hands it over, Archived once it's settled." },
+      { t: "ol", items: ["Open Sale Orders then Return Load Sheets.", "Click New load sheet and pick the courier and location it's coming into.", "Leave it Draft while you're expecting the handover.", "Set it to Posted once the courier has physically handed the returns over — this stamps Date Posted.", "Once any COD implications are settled against Dispatch, set Reconciliation to Reconciled.", "Move old settled sheets to Archived."] },
+    ],
+    technical: [
+      { t: "p", text: "The resource is keyed `return-load-sheets`. `src/lib/dispatch.ts` was generalized from a `dispatch`-only module into a `LoadSheetResource`-parameterized one (`\"dispatch\" | \"return-load-sheets\"`) rather than duplicated — same functions, a different Mongo collection (`app_return_load_sheets`), counter id, and reference prefix (`RL001`, `RL002`, ... instead of `LS001`) per direction. The API routes (`route.ts` / `[id]/route.ts`) pass the resource key straight through to `listLoadSheets()` / `createLoadSheet()` / `updateLoadSheet()` / `deleteLoadSheet()`." },
+      { t: "p", text: "Field/column/stat shape is otherwise identical to `dispatch` (see that guide entry) — same `tabs` (`draft`/`posted`/`archived`), same `LOCATION_OPTIONS` / `COURIER_OPTIONS` reuse, same one-way `datePosted` stamp." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "leads",
+    title: "Leads",
+    category: "Sales",
+    everyday: [
+      { t: "p", text: "**Leads** tracks prospective wholesale/B2B buyers before they become customers — name, company, how they found you, and where they are in your sales process." },
+      {
+        t: "dl",
+        items: [
+          { term: "Lead / Company", def: "Who the contact is and which business they're with." },
+          { term: "Source", def: "How they found you — Website, WhatsApp, Referral, Social, Walk-in, or Other." },
+          { term: "Status", def: "**New → Contacted → Qualified → Converted**, or **Lost**." },
+          { term: "Assigned To", def: "Which staff member owns following up with this lead." },
+        ],
+      },
+      { t: "ol", items: ["Open Sale Orders then Leads.", "Click New and fill in the contact and how they reached you.", "Assign it to whoever should follow up.", "Move it through Contacted → Qualified as the conversation progresses.", "Mark it Converted once they place an order, or Lost if it goes nowhere."] },
+      { t: "callout", tone: "warning", title: "No automatic conversion", text: "Marking a lead Converted doesn't create a customer or order record — that's a manual judgement call for now, not a wired-up side effect." },
+    ],
+    technical: [
+      { t: "p", text: "The resource is keyed `leads`, app-owned via `src/lib/app-data.ts` (`APP_OWNED_COLLECTIONS.leads = \"app_leads\"`). Search covers `name`, `company`, and `email`. `source` and `status` are independent `status`-type fields; `status` drives `tabs`." },
+      { t: "callout", tone: "warning", title: "Field set is a reasonable guess, not a verified copy", text: "Unlike every other page added alongside this one, Leads' exact columns weren't confirmed against a live reference screen — the page kept getting intercepted by a duplicate sidebar link during a live walkthrough of the system this app is modelled on, and it was judged not worth blocking the rest of the work over. The fields here (source, status pipeline, assigned-to) are a standard CRM-lead shape, not a checked copy. Treat this one as the most likely to need adjusting once you can see the real page." },
     ],
   },
 

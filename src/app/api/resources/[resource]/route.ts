@@ -6,7 +6,8 @@ import { SHOPIFY_READERS } from "@/lib/shopify-reads";
 import { SHOPIFY_WRITERS } from "@/lib/shopify-writes";
 import { isAppOwned, listAppRows, createAppRow } from "@/lib/app-data";
 import { listAdjustments, createAdjustment } from "@/lib/stock-adjustments";
-import { listLoadSheets, createLoadSheet } from "@/lib/dispatch";
+import { listLoadSheets, createLoadSheet, type LoadSheetResource } from "@/lib/dispatch";
+import { attachOrderOps } from "@/lib/order-ops";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +38,8 @@ export async function GET(
     return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
   }
 
-  if (resource === "dispatch") {
-    const { rows, error } = await listLoadSheets();
+  if (resource === "dispatch" || resource === "return-load-sheets") {
+    const { rows, error } = await listLoadSheets(resource as LoadSheetResource);
     return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
   }
 
@@ -66,7 +67,10 @@ export async function GET(
   if (!reader) {
     return NextResponse.json({ rows: [], source: "empty", readOnly: true, error: null });
   }
-  const { rows, error } = await reader();
+  const { rows: rawRows, error } = await reader();
+  // Orders carries a staff-editable operational status Shopify has no field
+  // for (see src/lib/order-ops.ts) — merge it in on top of the live read.
+  const rows = resource === "orders" ? await attachOrderOps(rawRows) : rawRows;
   return NextResponse.json({
     rows,
     source: "shopify",
@@ -97,8 +101,8 @@ export async function POST(
     return NextResponse.json({ row });
   }
 
-  if (resource === "dispatch") {
-    const { row, error } = await createLoadSheet(body);
+  if (resource === "dispatch" || resource === "return-load-sheets") {
+    const { row, error } = await createLoadSheet(resource as LoadSheetResource, body);
     if (error || !row) {
       return NextResponse.json({ error: error ?? "Create failed." }, { status: 422 });
     }

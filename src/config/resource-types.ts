@@ -68,7 +68,8 @@ export type ColumnType =
   | "status"
   | "date"
   | "datetime"
-  | "index";
+  | "index"
+  | "tags";
 
 export interface ResourceColumn {
   key: string;

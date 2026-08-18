@@ -4,7 +4,8 @@ import { getResource } from "@/config/resources";
 import { SHOPIFY_WRITERS } from "@/lib/shopify-writes";
 import { isAppOwned, updateAppRow, deleteAppRow } from "@/lib/app-data";
 import { updateAdjustment, deleteAdjustment } from "@/lib/stock-adjustments";
-import { updateLoadSheet, deleteLoadSheet } from "@/lib/dispatch";
+import { updateLoadSheet, deleteLoadSheet, type LoadSheetResource } from "@/lib/dispatch";
+import { setOrderOps } from "@/lib/order-ops";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +37,21 @@ export async function PATCH(
     return NextResponse.json({ ok: true, row });
   }
 
-  if (g.resource === "dispatch") {
-    const { row, error } = await updateLoadSheet(g.id, body);
+  if (g.resource === "dispatch" || g.resource === "return-load-sheets") {
+    const { row, error } = await updateLoadSheet(g.resource as LoadSheetResource, g.id, body);
     if (error) return NextResponse.json({ error }, { status: 422 });
     return NextResponse.json({ ok: true, row });
+  }
+
+  if (g.resource === "orders") {
+    const writer = SHOPIFY_WRITERS.orders;
+    if (writer?.update) {
+      const { error } = await writer.update(g.id, body);
+      if (error) return NextResponse.json({ error }, { status: 502 });
+    }
+    const { error } = await setOrderOps(g.id, body.opsStatus);
+    if (error) return NextResponse.json({ error }, { status: 503 });
+    return NextResponse.json({ ok: true });
   }
 
   if (!isAppOwned(g.resource)) {
@@ -73,8 +85,8 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   }
 
-  if (g.resource === "dispatch") {
-    const { error } = await deleteLoadSheet(g.id);
+  if (g.resource === "dispatch" || g.resource === "return-load-sheets") {
+    const { error } = await deleteLoadSheet(g.resource as LoadSheetResource, g.id);
     if (error) return NextResponse.json({ error }, { status: 422 });
     return NextResponse.json({ ok: true });
   }
