@@ -84,6 +84,7 @@ const OPS_ACTION_TITLE: Record<string, string> = {
   assign_consignment: "Consignment assigned",
   print_label: "Shipping label printed",
   dispatch: "Dispatched",
+  mark_fulfilled: "Marked fulfilled",
   cancel: "Cancelled",
 };
 

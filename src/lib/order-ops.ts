@@ -70,6 +70,7 @@ export interface OrderOpsDoc {
   codAmount?: number;
   total?: number;
   labelPrintedAt?: string;
+  fulfilledAt?: string;
   dispatchedAt?: string;
   loadSheet?: string;
   cancelReason?: string;

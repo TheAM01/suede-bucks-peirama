@@ -9,6 +9,10 @@
  *              │   (Create    (consignment   (label printed)   (button or QR scan)
  *              │    Package)   booked)
  *   Booking Failed ──────────────^
+ *
+ *   Dispatched ─> Fulfilled   (manual courier only: "Mark fulfilled" or a
+ *                              second label scan on delivery — Insta has no
+ *                              manual step, its updates belong to its API)
  */
 
 /** Tab order follows the workflow: triage first, then the packing/dispatch pipeline, then everything else. */
@@ -44,6 +48,7 @@ export type OrderAction =
   | "assign_consignment"
   | "print_label"
   | "dispatch"
+  | "mark_fulfilled"
   | "cancel";
 
 export const ACTION_FROM: Record<OrderAction, readonly string[]> = {
@@ -56,6 +61,7 @@ export const ACTION_FROM: Record<OrderAction, readonly string[]> = {
   assign_consignment: ["packaged", "booking_failed"],
   print_label: ["finalized", "in_pickup_packing"],
   dispatch: ["in_pickup_packing"],
+  mark_fulfilled: ["dispatched"],
   cancel: ["finalized", "in_pickup_packing"],
 };
 
@@ -69,20 +75,61 @@ export const ACTION_LABEL: Record<OrderAction, string> = {
   assign_consignment: "Assign consignment",
   print_label: "Print shipping label",
   dispatch: "Dispatch",
+  mark_fulfilled: "Mark fulfilled",
   cancel: "Cancel",
 };
 
-export function canRun(action: OrderAction, status: unknown): boolean {
+/** The in-house Karachi courier — no API, so delivery is confirmed by hand (Mark fulfilled). */
+export const MANUAL_COURIER = "Manual (Karachi)";
+
+/** Actions only valid for parcels carried by the manual courier. */
+const MANUAL_ONLY: OrderAction[] = ["mark_fulfilled"];
+
+export function canRun(action: OrderAction, status: unknown, courier?: unknown): boolean {
+  if (MANUAL_ONLY.includes(action) && courier !== MANUAL_COURIER) return false;
   return ACTION_FROM[action].includes(String(status));
 }
 
 /** Couriers a consignment can be booked with. `api` couriers can be booked automatically. */
 export const COURIERS = [
   { value: "Insta", label: "Insta (out of city)", api: true },
-  { value: "Manual (Karachi)", label: "Manual courier (Karachi)", api: false },
+  { value: MANUAL_COURIER, label: "Manual courier (Karachi)", api: false },
 ] as const;
 
 /** Karachi deliveries go with the in-house manual courier; everything else books with Insta. */
 export function defaultCourierFor(city: unknown): string {
-  return /karachi|\bkhi\b/i.test(String(city ?? "")) ? "Manual (Karachi)" : "Insta";
+  return /karachi|\bkhi\b/i.test(String(city ?? "")) ? MANUAL_COURIER : "Insta";
+}
+
+/**
+ * What scanning a shipping label's QR does, by the order's current tab: the
+ * label only exists once printed, so a Finalized parcel moves to In Pickup &
+ * Packing, a parcel already there is dispatched, and a dispatched
+ * manual-courier parcel scanned again (by the rider, on delivery) is marked
+ * fulfilled. Anything else is left where it is and the scan page just
+ * reports its status.
+ */
+export const SCAN_ADVANCE: Partial<Record<string, OrderAction>> = {
+  finalized: "print_label",
+  in_pickup_packing: "dispatch",
+  dispatched: "mark_fulfilled",
+};
+
+/** The site path a label's QR points to — opening it advances the order (see SCAN_ADVANCE). */
+export function scanPath(consignmentId: string): string {
+  return `/scan/${encodeURIComponent(consignmentId)}`;
+}
+
+/**
+ * Normalize whatever a scanner produced into a consignment ID: label QRs hold
+ * a full `/scan/<id>` URL, older labels and hand-typed codes are the bare ID.
+ */
+export function consignmentFromScan(code: string): string {
+  const m = code.trim().match(/\/scan\/([^/?#\s]+)/);
+  if (!m) return code.trim();
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
 }

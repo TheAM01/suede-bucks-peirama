@@ -24,6 +24,9 @@ export const SHOPIFY_SCOPES_REQUIRED = [
   "read_locations",
   "read_fulfillments",
   "write_fulfillments",
+  // Mark fulfilled (manual courier) reads the order's fulfillment orders and fulfills them.
+  "read_merchant_managed_fulfillment_orders",
+  "write_merchant_managed_fulfillment_orders",
 ] as const;
 
 /** Nice to have — enable if the store's plan supports them. */

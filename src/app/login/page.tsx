@@ -8,7 +8,12 @@ import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const { next } = await searchParams;
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-6 py-12">
       <div className="absolute right-4 top-4 md:right-8 md:top-8">
@@ -30,7 +35,7 @@ export default function LoginPage() {
 
         <Card>
           <CardContent className="py-6">
-            <LoginForm />
+            <LoginForm next={typeof next === "string" ? next : undefined} />
           </CardContent>
         </Card>
 

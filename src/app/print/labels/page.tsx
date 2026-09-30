@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import QRCode from "qrcode";
 import { getCurrentUser } from "@/lib/auth";
 import { getOrderOps } from "@/lib/order-ops";
 import { readOrderBrief } from "@/lib/shopify-order-detail";
 import { formatCurrency } from "@/lib/utils";
+import { scanPath } from "@/config/order-workflow";
 import { AutoPrint } from "./auto-print";
 
 export const metadata: Metadata = { title: "Shipping labels" };
@@ -24,8 +26,11 @@ interface Label {
 
 /**
  * Printable shipping labels, one per page: `/print/labels?ids=1,2,3`. The QR
- * encodes the consignment id — the value the dispatch and load-sheet
- * scanners resolve back to the order. Customer name/address are read live
+ * encodes this site's `/scan/<consignment id>` URL — opening it (a phone
+ * camera scan) moves the order to its next stage; the in-app scanners
+ * (Scan to dispatch, Scan load sheet) pull the consignment id back out of it.
+ * The URL's origin is whatever host served this page, so print labels from
+ * the public deployment, not localhost, or phones won't be able to open them. Customer name/address are read live
  * from Shopify (never stored app-side). Outside `/dashboard` so the sidebar
  * and bars don't print; gated by the proxy plus the session check below.
  */
@@ -35,6 +40,11 @@ export default async function LabelsPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   if (!(await getCurrentUser())) redirect("/login");
+
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto")?.split(",")[0] ?? (host.startsWith("localhost") ? "http" : "https");
+  const origin = `${proto}://${host}`;
 
   const raw = (await searchParams).ids;
   const ids = String(Array.isArray(raw) ? raw.join(",") : (raw ?? ""))
@@ -63,7 +73,11 @@ export default async function LabelsPage({
         lines: a
           ? [a.address1, a.address2, [a.city, a.province, a.zip].filter(Boolean).join(" "), a.country].filter(Boolean)
           : [],
-        qrSvg: await QRCode.toString(consignmentId, { type: "svg", margin: 1, errorCorrectionLevel: "M" }),
+        qrSvg: await QRCode.toString(`${origin}${scanPath(consignmentId)}`, {
+          type: "svg",
+          margin: 1,
+          errorCorrectionLevel: "M",
+        }),
       };
     }),
   );

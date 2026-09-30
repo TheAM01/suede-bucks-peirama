@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
   Loader2,
+  PackageCheck,
 } from "@/components/icons";
 import type { Row } from "@/config/resource-types";
 import {
@@ -73,6 +74,7 @@ const BUTTON_ORDER: OrderAction[] = [
   "assign_consignment",
   "print_label",
   "dispatch",
+  "mark_fulfilled",
   "unpackage",
   "move_exception",
   "cancel",
@@ -87,11 +89,19 @@ const ICON: Partial<Record<OrderAction, IconType>> = {
   assign_consignment: QrCode,
   print_label: Printer,
   dispatch: Send,
+  mark_fulfilled: PackageCheck,
   cancel: X,
   discard: Trash2,
 };
 
-const PRIMARY: OrderAction[] = ["move_active", "create_package", "assign_consignment", "print_label", "dispatch"];
+const PRIMARY: OrderAction[] = [
+  "move_active",
+  "create_package",
+  "assign_consignment",
+  "print_label",
+  "dispatch",
+  "mark_fulfilled",
+];
 const DESTRUCTIVE: OrderAction[] = ["discard", "cancel"];
 /** actions that open their own dialog instead of running straight away */
 type DialogKind = "modify" | "discard" | "consignment" | "cancel" | "confirm_malformed";
@@ -120,7 +130,9 @@ export function OrderControlPanel({
   const [pendingConfirm, setPendingConfirm] = React.useState<{ rows: Row[]; message: string } | null>(null);
 
   const actions = status
-    ? BUTTON_ORDER.filter((a) => canRun(a, status)).filter((a) => a !== "modify" || rows.length === 1)
+    ? BUTTON_ORDER.filter((a) => rows.every((r) => canRun(a, status, r.courier))).filter(
+        (a) => a !== "modify" || rows.length === 1,
+      )
     : [];
 
   /** Run one action across rows; collect confirmations the server asks for instead of failing them. */

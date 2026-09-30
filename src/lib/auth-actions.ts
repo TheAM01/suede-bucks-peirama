@@ -31,7 +31,10 @@ export async function loginAction(
     maxAge: SESSION_MAX_AGE,
   });
 
-  redirect("/dashboard");
+  // Return to the page that bounced them here (e.g. a scanned label's /scan link).
+  // Same-site paths only — never an absolute or protocol-relative URL.
+  const next = String(formData.get("next") ?? "");
+  redirect(/^\/(?![/\\])/.test(next) ? next : "/dashboard");
 }
 
 export async function logoutAction(): Promise<void> {

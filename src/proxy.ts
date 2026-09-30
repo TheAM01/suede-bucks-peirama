@@ -7,8 +7,12 @@ export async function proxy(req: NextRequest) {
   const session = await verifySession(token);
   const isAuthed = Boolean(session);
 
-  // /print/* holds chrome-less printables (shipping labels) — same gate as the dashboard.
-  const isDashboard = pathname.startsWith("/dashboard") || pathname.startsWith("/print");
+  // /print/* (shipping labels) and /scan/* (where a label's QR points) are
+  // chrome-less pages outside the dashboard — same gate.
+  const isDashboard =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/print") ||
+    pathname.startsWith("/scan");
   const isLogin = pathname === "/login";
 
   // Gate the dashboard behind a valid session.
@@ -31,5 +35,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/print/:path*", "/login"],
+  matcher: ["/dashboard/:path*", "/print/:path*", "/scan/:path*", "/login"],
 };

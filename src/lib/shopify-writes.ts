@@ -573,6 +573,56 @@ export async function setOrderTags(
   return { error };
 }
 
+/**
+ * Fulfil everything still open on an order, with the courier + consignment as
+ * tracking. The customer isn't emailed (the rider already handed it over). An
+ * order with nothing left to fulfil counts as success, so a retry after a
+ * partial failure is harmless.
+ */
+export async function fulfillOrder(
+  id: string,
+  tracking: { company: string; number: string },
+): Promise<{ error?: string }> {
+  const res = await shopifyQuery<{
+    order: { fulfillmentOrders: { nodes: { id: string; status: string }[] } } | null;
+  }>(
+    `query($id: ID!) {
+      order(id: $id) { fulfillmentOrders(first: 20) { nodes { id status } } }
+    }`,
+    { id: toGid("Order", id) },
+  );
+  if (!res.ok) {
+    return {
+      error: /access|scope/i.test(res.error)
+        ? `${res.error} — grant read/write_merchant_managed_fulfillment_orders on the Integrations page's scope list.`
+        : res.error,
+    };
+  }
+  if (!res.data.order) return { error: "That order no longer exists in Shopify." };
+  const open = res.data.order.fulfillmentOrders.nodes.filter((f) =>
+    ["OPEN", "IN_PROGRESS"].includes(f.status),
+  );
+  if (open.length === 0) return {};
+
+  const { error } = await mutate(
+    `mutation($fulfillment: FulfillmentInput!) {
+      fulfillmentCreate(fulfillment: $fulfillment) {
+        fulfillment { id }
+        userErrors { field message }
+      }
+    }`,
+    {
+      fulfillment: {
+        lineItemsByFulfillmentOrder: open.map((f) => ({ fulfillmentOrderId: f.id })),
+        trackingInfo: tracking.number ? { company: tracking.company, number: tracking.number } : undefined,
+        notifyCustomer: false,
+      },
+    },
+    "fulfillmentCreate",
+  );
+  return { error };
+}
+
 // --- registry -----------------------------------------------------------------------
 
 /**

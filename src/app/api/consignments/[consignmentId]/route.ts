@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { findByConsignment } from "@/lib/order-ops";
 import { runOrderAction } from "@/lib/order-workflow";
+import { SCAN_ADVANCE, statusLabel } from "@/config/order-workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -42,11 +43,27 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   });
 }
 
-/** Scan-to-dispatch: dispatch the order behind a scanned label QR. */
-export async function POST(_req: NextRequest, ctx: Ctx) {
+/**
+ * Act on the order behind a scanned label QR. Default (the Orders page's
+ * Scan to dispatch box): dispatch. With `{ advance: true }` (the label QR's
+ * own /scan page): move it to whatever comes next for its current tab, per
+ * SCAN_ADVANCE — Finalized → In Pickup & Packing → Dispatched.
+ */
+export async function POST(req: NextRequest, ctx: Ctx) {
   const r = await resolve(ctx);
   if ("fail" in r) return r.fail;
-  const result = await runOrderAction(r.doc._id, "dispatch", { via: "QR scan" });
-  if (result.error) return NextResponse.json({ ...result, number: r.doc.number }, { status: 422 });
-  return NextResponse.json({ ...result, number: r.doc.number });
+  const body = (await req.json().catch(() => null)) as { advance?: unknown } | null;
+  const from = r.doc.opsStatus;
+  const base = { number: r.doc.number, orderId: r.doc._id, from };
+
+  const action = body?.advance === true ? SCAN_ADVANCE[from] : "dispatch";
+  if (!action) {
+    return NextResponse.json(
+      { ...base, error: `Nothing to do — this order is in ${statusLabel(from)}.` },
+      { status: 422 },
+    );
+  }
+  const result = await runOrderAction(r.doc._id, action, { via: "QR scan" });
+  if (result.error) return NextResponse.json({ ...result, ...base }, { status: 422 });
+  return NextResponse.json({ ...result, ...base });
 }

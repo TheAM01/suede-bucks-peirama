@@ -3,6 +3,7 @@ import {
   ACTION_FROM,
   ACTION_LABEL,
   COURIERS,
+  MANUAL_COURIER,
   canRun,
   statusLabel,
   type OrderAction,
@@ -10,7 +11,7 @@ import {
 import { checkAddress, routeNewOrder } from "./address-check";
 import { applyTransition, getOrderOps, intakeOrder } from "./order-ops";
 import { readOrderBrief } from "./shopify-order-detail";
-import { setOrderTags, updateOrderShipping } from "./shopify-writes";
+import { fulfillOrder, setOrderTags, updateOrderShipping } from "./shopify-writes";
 import { bookConsignment } from "./courier-booking";
 
 /**
@@ -54,7 +55,12 @@ export async function runOrderAction(
   if (error || !doc) return { error: error ?? "Couldn't load the order's status." };
   const from = doc.opsStatus;
 
-  if (!canRun(action, from)) {
+  if (action === "mark_fulfilled" && from === "dispatched" && doc.courier !== MANUAL_COURIER) {
+    return {
+      error: `Only manual-courier orders are marked fulfilled by hand — ${doc.courier || "this courier"}'s delivery updates come from the courier.`,
+    };
+  }
+  if (!canRun(action, from, doc.courier)) {
     return {
       error: `Can't ${ACTION_LABEL[action].toLowerCase()} an order that's in ${statusLabel(from)}.`,
     };
@@ -184,10 +190,17 @@ export async function runOrderAction(
       );
     }
 
-    case "print_label":
+    case "print_label": {
+      // A label QR scanned while still Finalized also lands here (see SCAN_ADVANCE).
+      const scanned = str(payload.via) === "QR scan";
       return from === "in_pickup_packing"
         ? move(from, {}, "Shipping label reprinted")
-        : move("in_pickup_packing", { labelPrintedAt: at }, "Shipping label printed");
+        : move(
+            "in_pickup_packing",
+            { labelPrintedAt: at },
+            scanned ? "Label QR scanned — ready for pickup" : "Shipping label printed",
+          );
+    }
 
     case "dispatch": {
       const via = str(payload.via) || "button";
@@ -196,6 +209,20 @@ export async function runOrderAction(
         "dispatched",
         { dispatchedAt: at, ...(loadSheet ? { loadSheet } : {}) },
         loadSheet ? `Dispatched on load sheet ${loadSheet}` : `Dispatched (${via})`,
+      );
+    }
+
+    case "mark_fulfilled": {
+      const done = await fulfillOrder(orderId, {
+        company: doc.courier ?? MANUAL_COURIER,
+        number: doc.consignmentId ?? "",
+      });
+      if (done.error) return { error: `Shopify didn't fulfil the order: ${done.error}` };
+      const via = str(payload.via);
+      return move(
+        "fulfilled",
+        { fulfilledAt: at },
+        via === "QR scan" ? "Delivered — label scanned, fulfilled in Shopify" : "Delivered — fulfilled in Shopify",
       );
     }
 

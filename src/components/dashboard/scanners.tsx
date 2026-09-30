@@ -3,7 +3,7 @@
 import * as React from "react";
 import { QrCode, Check, AlertCircle, Trash2, Loader2 } from "@/components/icons";
 import { COURIER_OPTIONS, LOCATION_OPTIONS } from "@/config/resources";
-import { statusLabel } from "@/config/order-workflow";
+import { consignmentFromScan, statusLabel } from "@/config/order-workflow";
 import { useStore } from "@/lib/store";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,8 @@ function ScanInput({ onScan, disabled }: { onScan: (code: string) => void; disab
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const code = value.trim();
+        // Label QRs hold a full /scan/<id> URL; hand-typed codes are the bare id.
+        const code = consignmentFromScan(value);
         if (code) onScan(code);
         setValue("");
         ref.current?.focus();
