@@ -39,6 +39,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
       opsStatus: d.opsStatus,
       codAmount: d.codAmount ?? 0,
       total: d.total ?? 0,
+      loadSheet: d.loadSheet ?? "",
     },
   });
 }

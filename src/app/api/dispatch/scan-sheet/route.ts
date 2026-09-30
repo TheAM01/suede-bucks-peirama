@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { createScannedLoadSheet } from "@/lib/dispatch";
+import { createScannedLoadSheet } from "@/lib/load-sheet-scan";
 
 export const dynamic = "force-dynamic";
 

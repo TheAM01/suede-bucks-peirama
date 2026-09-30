@@ -48,6 +48,7 @@ export type OrderAction =
   | "assign_consignment"
   | "print_label"
   | "dispatch"
+  | "add_to_load_sheet"
   | "mark_fulfilled"
   | "cancel";
 
@@ -61,6 +62,8 @@ export const ACTION_FROM: Record<OrderAction, readonly string[]> = {
   assign_consignment: ["packaged", "booking_failed"],
   print_label: ["finalized", "in_pickup_packing"],
   dispatch: ["in_pickup_packing"],
+  /** a dispatched order that isn't on any load sheet yet (dispatched before sheets were automatic) */
+  add_to_load_sheet: ["dispatched"],
   mark_fulfilled: ["dispatched"],
   cancel: ["finalized", "in_pickup_packing"],
 };
@@ -75,6 +78,7 @@ export const ACTION_LABEL: Record<OrderAction, string> = {
   assign_consignment: "Assign consignment",
   print_label: "Print shipping label",
   dispatch: "Dispatch",
+  add_to_load_sheet: "Add to load sheet",
   mark_fulfilled: "Mark fulfilled",
   cancel: "Cancel",
 };

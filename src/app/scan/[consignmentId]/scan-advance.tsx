@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 type Result =
   | { state: "working" }
-  | { state: "done"; number: string; orderId: string; from: string; to: string }
+  | { state: "done"; number: string; orderId: string; from: string; to: string; loadSheet?: string }
   | { state: "error"; message: string; number?: string; orderId?: string };
 
 /** Advances the scanned parcel's order once on load, then shows what happened. */
@@ -35,6 +35,7 @@ export function ScanAdvance({ consignmentId }: { consignmentId: string }) {
           orderId?: string;
           from?: string;
           status?: string;
+          loadSheet?: string;
         };
         if (!res.ok || !body.status) {
           setResult({
@@ -50,6 +51,7 @@ export function ScanAdvance({ consignmentId }: { consignmentId: string }) {
             orderId: body.orderId ?? "",
             from: body.from ?? "",
             to: body.status,
+            loadSheet: body.loadSheet,
           });
         }
       } catch {
@@ -82,6 +84,11 @@ export function ScanAdvance({ consignmentId }: { consignmentId: string }) {
               <span className="text-muted-foreground">→</span>
               <Badge variant="success">{statusLabel(result.to)}</Badge>
             </div>
+            {result.loadSheet ? (
+              <p className="text-sm text-muted-foreground">
+                On load sheet <span className="font-mono">{result.loadSheet}</span>
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3">

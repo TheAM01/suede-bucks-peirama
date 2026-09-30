@@ -490,13 +490,14 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Packaged", def: "**Assign consignment** — book it with **Insta** (out of city) or enter the ID from the **manual Karachi courier**. **Back to Active** undoes the package." },
           { term: "Booking Failed", def: "Insta couldn't book it — the reason is shown on the order. Try again, or book it in Insta's portal and enter the consignment ID by hand." },
           { term: "Finalized", def: "**Print shipping label** (a QR code with the consignment ID, plus the customer's name, address, phone, and the cash to collect), or **Cancel** — cancelling a finalized order needs a reason." },
-          { term: "In Pickup & Packing", def: "The label is printed. **Dispatch** when the courier takes it (or use **Scan to dispatch**), reprint the label, or **Cancel pickup** to send it back to Finalized." },
-          { term: "Dispatched", def: "For the **manual Karachi courier** only: **Mark fulfilled** once the rider has delivered it — the order is marked fulfilled in Shopify too (with the consignment ID as its tracking number, no email to the customer) and moves to **Fulfilled**. Insta orders have no manual step here." },
+          { term: "In Pickup & Packing", def: "The label is printed. **Dispatch** when the courier takes it (or use **Scan to dispatch**), reprint the label, or **Cancel pickup** to send it back to Finalized. Dispatch asks which **load sheet** the parcels go on — the courier's open draft sheet (the default, started automatically if there isn't one), another draft sheet for that courier, or a brand-new sheet." },
+          { term: "Dispatched", def: "The **Load sheet** column shows which sheet each parcel is on. Orders dispatched before load sheets were automatic have none — tick them and press **Add to load sheet**. For the **manual Karachi courier** only: **Mark fulfilled** once the rider has delivered it — the order is marked fulfilled in Shopify too (with the consignment ID as its tracking number, no email to the customer) and moves to **Fulfilled**. Insta orders have no manual step here." },
         ],
       },
       { t: "callout", tone: "info", title: "Modify saves only when you confirm", text: "Editing an order's address or note opens a form that shows, as you type, whether the address still looks wrong. Nothing is saved until you press **Save changes** and confirm — then the change is written to the Shopify order itself." },
       { t: "callout", tone: "info", title: "Discard doesn't touch Shopify", text: "Discarding an order moves it to **Canceled** here only. The Shopify order is not cancelled or refunded — do that in Shopify if you need to." },
-      { t: "callout", tone: "success", title: "Scan to dispatch", text: "The **Scan to dispatch** button next to the tabs opens a scanner box. Point a barcode scanner at each printed label (or type the consignment ID and press Enter) and each order is marked **Dispatched** on the spot." },
+      { t: "callout", tone: "success", title: "Scan to dispatch", text: "The **Scan to dispatch** button next to the tabs opens a scanner box. Point a barcode scanner at each printed label (or type the consignment ID and press Enter) and each order is marked **Dispatched** on the spot, onto its courier's open draft load sheet." },
+      { t: "callout", tone: "info", title: "Every dispatched parcel is on a load sheet", text: "However an order is dispatched — the button, a scan, or a phone scan of its label — it lands on a load sheet for its courier, and that sheet's parcel count, total, and cash-on-delivery grow with it. Sheets start as **Draft**; post the sheet on the Dispatch page when the rider leaves." },
       { t: "callout", tone: "success", title: "Scan a label with your phone", text: "The QR on every label is a link to this app. Scan it with a phone camera (signed in — it asks you to sign in first if not) and the order moves to its next stage automatically: a **Finalized** parcel goes to **In Pickup & Packing**, a parcel **In Pickup & Packing** is **Dispatched**, and a **Dispatched** manual-courier parcel scanned again by the rider on delivery is **Fulfilled**. The page shows the order number and the move it made." },
       { t: "callout", tone: "warning", title: "Print labels from the live site", text: "The QR link points at whichever web address the labels were printed from. Print them from the public site, not from a computer's localhost, or phones won't be able to open the link." },
       {
@@ -523,7 +524,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
       { t: "callout", tone: "warning", title: "Automatic filing needs the order webhook", text: "New orders are only checked and filed into Exception / Pending CC / Active if the order webhook is registered on the **Integrations** page. Orders placed before that (or while it wasn't registered) show up as **Active** without an address check." },
     ],
     technical: [
-      { t: "p", text: "The orders resource is keyed `orders`; search covers `number`, `customer`, and `consignmentId`. Row shape: `number`, `customer`, `opsStatus`, `city`, `courier`, `gateway`, `tags`, `amount`, `discount`, `shipping`, `total`, `items`, `payment`, `fulfillment`, `channel`, `createdAt`, `notes`. `number`, `customer`, `total`, `items`, `opsStatus`, `payment`, `fulfillment`, `channel`, `createdAt`, and `notes` are in `fields` (and therefore editable in the drawer). `city`/`courier`/`gateway`/`tags`/`amount`/`discount`/`shipping` are `columns`-only, display derived straight from Shopify on every read — `SHOPIFY_WRITERS.orders.update` only ever sends `note` to Shopify; `opsStatus` is the one editable field that goes somewhere else entirely (see below)." },
+      { t: "p", text: "The orders resource is keyed `orders`; search covers `number`, `customer`, and `consignmentId`; the `loadSheet` column comes from the ops overlay. Row shape: `number`, `customer`, `opsStatus`, `city`, `courier`, `gateway`, `tags`, `amount`, `discount`, `shipping`, `total`, `items`, `payment`, `fulfillment`, `channel`, `createdAt`, `notes`. `number`, `customer`, `total`, `items`, `opsStatus`, `payment`, `fulfillment`, `channel`, `createdAt`, and `notes` are in `fields` (and therefore editable in the drawer). `city`/`courier`/`gateway`/`tags`/`amount`/`discount`/`shipping` are `columns`-only, display derived straight from Shopify on every read — `SHOPIFY_WRITERS.orders.update` only ever sends `note` to Shopify; `opsStatus` is the one editable field that goes somewhere else entirely (see below)." },
       { t: "ul", items: ["`payment` is one of `paid`, `pending`, or `refunded`.", "`fulfillment` is one of `fulfilled`, `partial`, or `unfulfilled`.", "`channel` is one of `online` or `pos`.", "`tags` renders with the new `\"tags\"` `ColumnType` — up to 3 badge chips plus a `+N` overflow badge, added in `resource-view.tsx` alongside the existing `\"status\"`/`\"index\"` types."] },
       { t: "p", text: "KPIs: Orders (count with delta), Revenue (`sum(total)` with delta), Unfulfilled (`fulfillment === 'unfulfilled'`), and Average order value (`sum(total) / count`)." },
       { t: "callout", tone: "info", title: "Payment and fulfilment are independent axes", text: "An order can be `paid` but `unfulfilled`, or `fulfilled` but `refunded`. The two statuses do not gate each other, so treat them as separate lifecycles rather than a single linear status." },
@@ -542,7 +543,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         "`create_package` reads `readOrderBrief()` (number, `totalPriceSet`, `totalOutstandingSet` → `codAmount`) and adds the Shopify tag `packaged` via `tagsAdd`; `unpackage` removes it via `tagsRemove`.",
         "`assign_consignment`: `{ courier, consignmentId }` for a manual ID (4–40 of `[A-Za-z0-9-]`), or `{ courier, useApi: true }` to call the courier's adapter in `src/lib/courier-booking.ts`. A failed API booking moves the order to `booking_failed` with `bookingError`. **Insta's adapter is a stub** that always fails with an explanatory message until its API is implemented there.",
         "`print_label` → `in_pickup_packing` (a reprint from there just logs). Labels render at `/print/labels?ids=...` (outside `/dashboard` so no chrome prints; gated in `src/proxy.ts` and by a session check). The QR is generated server-side with the `qrcode` package (see the scan-link item below for what it encodes).",
-        "`dispatch` → `dispatched`, from the button, `POST /api/consignments/[consignmentId]` (scan-to-dispatch), or a scanned load sheet.",
+        "`dispatch` → `dispatched`, from the button, `POST /api/consignments/[consignmentId]` (scan-to-dispatch), or a scanned load sheet. Every dispatch puts the parcel on a load sheet: `payload.target` is `\"auto\"` (default — the courier's newest Draft sheet, opened if none), `\"new\"`, or a Draft sheet's id (same courier), resolved by `resolveLoadSheet()` in `src/lib/dispatch.ts` under a per-courier in-process lock so a batch can't open several automatic sheets. The order stores the sheet `reference` as `loadSheet`; `attachToLoadSheet()` then `$push`es the consignment and `$inc`s the sheet's `totalShipments`/`totalAmount`/`codAmount` (guarded by `consignmentIds: { $ne }`, so it's idempotent). The control panel dispatches one order at a time, reusing the first `loadSheetId` returned per courier when the target is `\"new\"`.",
+        "`add_to_load_sheet` (from `dispatched`, only when `loadSheet` is empty) does the same sheet resolution + attach without changing status — for orders dispatched before sheets were automatic.",
         "`mark_fulfilled` → `fulfilled`, **manual courier only**: `canRun(action, status, courier)` rejects it unless `courier === MANUAL_COURIER`. It calls `fulfillOrder()` in `src/lib/shopify-writes.ts`: reads the order's `fulfillmentOrders`, then one `fulfillmentCreate` over every `OPEN`/`IN_PROGRESS` one with `trackingInfo { company: courier, number: consignmentId }` and `notifyCustomer: false`; nothing left open counts as success, so retries are safe. Needs the `read_merchant_managed_fulfillment_orders` / `write_merchant_managed_fulfillment_orders` scopes (now in `SHOPIFY_SCOPES_REQUIRED`). Stamps `fulfilledAt`.",
         "**Label QR = a link**: labels encode `<origin>/scan/<consignmentId>` (`scanPath()`), origin taken from the request's `host` / `x-forwarded-*` headers. `/scan/[consignmentId]` (gated by `src/proxy.ts` and a session check; login now honours the `next` param, same-site paths only) renders `ScanAdvance`, which POSTs `{ advance: true }` to `/api/consignments/[consignmentId]` once after load — never on the GET, so link previews and prefetches can't move orders; a ref guard stops Strict Mode's double effect from advancing twice. The endpoint maps the current status through `SCAN_ADVANCE` (`finalized` → `print_label`, `in_pickup_packing` → `dispatch`, `dispatched` → `mark_fulfilled`). The in-app keyboard-wedge scanners strip the URL back to the id with `consignmentFromScan()`, so old bare-id labels still work.",
         "`cancel` from `in_pickup_packing` → back to `finalized` (clears `labelPrintedAt`); from `finalized` it requires `reason` → `canceled`, stores `cancelReason`, and unsets `consignmentId` so the old label can't be scanned.",
@@ -660,7 +662,9 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Date Created / Date Posted", def: "When the sheet was started, and when it was handed to the courier." },
         ],
       },
-      { t: "callout", tone: "success", title: "Scan a load sheet", text: "The fastest way to build a sheet: press **Scan load sheet**, pick the courier and location, and scan every parcel's label as you hand it over. Each scan adds the order and its cash-on-delivery amount; the running total of parcels and COD is shown at the bottom. **Create load sheet** posts it straight away, lists every consignment on it, and marks each of those orders **Dispatched**. Only parcels whose label has been printed (In Pickup & Packing) and that are booked with the same courier can go on the sheet." },
+      { t: "callout", tone: "info", title: "Dispatched orders fill sheets automatically", text: "When orders are dispatched from the Orders page (button or scan), they're added to their courier's open **Draft** sheet — one is started automatically if there isn't one, dispatching from the **Main Warehouse**. The sheet's shipment count, total, and COD update with every parcel. When the rider leaves, open the sheet and set it to **Posted**." },
+      { t: "callout", tone: "success", title: "Scan a load sheet", text: "Or build a sheet at the door: press **Scan load sheet**, pick the courier and location, and scan every parcel's label as you hand it over. Each scan adds the order and its cash-on-delivery amount; the running total of parcels and COD is shown at the bottom. **Create load sheet** posts it straight away, lists every consignment on it, and marks each order **Dispatched**. Parcels must have a printed label (In Pickup & Packing), or already be Dispatched but not yet on any sheet, and be booked with the same courier." },
+      { t: "callout", tone: "warning", title: "Sheets with parcels can't be deleted", text: "Orders remember which sheet they left on, so a sheet that has parcels on it can't be deleted — archive it instead." },
       { t: "ol", items: ["Open Sales then Dispatch.", "Click New load sheet and pick the courier and location (or use Scan load sheet, above).", "Fill in the shipment count, total amount, COD amount, and weight.", "Leave it as Draft while you are still assembling it.", "Set it to Posted once the courier has physically collected it — this stamps Date Posted.", "Once the courier settles the COD cash with you, set Reconciliation to Reconciled.", "Move settled, old sheets to Archived to keep the Posted tab focused on what is still outstanding."] },
       { t: "callout", tone: "warning", title: "Posting stamps the date and doesn't reset", text: "Date Posted is set the moment a sheet first becomes Posted. Archiving it afterwards does not clear or change that date — it's a permanent record of when it left." },
     ],
@@ -670,12 +674,13 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         "`reference` (`LS001`, `LS002`, ...) comes from an atomic counter in `app_counters` (counter id `dispatch`), zero-padded to 3 digits — never duplicated, same mechanism as `stock-adjustments`' `SA-XXXX` numbers.",
         "`status` is one of `draft`, `posted`, or `archived`, driving the resource's `tabs` config (`ResourceConfig.tabs`) — a segmented All/Draft/Posted/Archived filter rendered by `resource-view.tsx` above the table.",
         "`reconciliation` is `pending` or `reconciled`, independent of `status` — a sheet can be Posted and still Pending reconciliation.",
-        "`totalShipments`, `totalAmount`, `codAmount`, and `weight` are plain hand-entered numeric/currency fields, not derived from a line-item list — consistent with how `collections.products` or `registers.sales` are stored counts elsewhere in this app.",
+        "`totalShipments`, `totalAmount`, and `codAmount` start at whatever is entered, then grow automatically as dispatched parcels are attached (`attachToLoadSheet()`), alongside a `consignmentIds` array (a `tags` column). They stay editable in the drawer; `weight` is hand-entered only.",
+        "`deleteLoadSheet()` refuses a sheet whose `consignmentIds` isn't empty — orders reference it by `loadSheet`.",
         "`createdAt` is set server-side at creation; `datePosted` is stamped server-side the first time `status` becomes `posted` and is never overwritten by later edits (including a later `archived` transition) — enforced in `updateLoadSheet()` by checking `!existing.datePosted` before setting it.",
         "`courier` and `location` are plain `select` fields (fixed option lists), not `optionsFrom` a live resource — dispatch doesn't post anything to Shopify, so it doesn't need a real location GID the way `stock-adjustments`' facility field does.",
         "`/dashboard/dispatch` and `/dashboard/returns` are both literal route files rendering the same `DispatchReturnsView` client component (`src/components/dashboard/dispatch-returns-view.tsx`), which puts a `Segmented` switch above a `key`-remounted `ResourceView` for whichever resource (`dispatch` or `returns`) is active. Switching the segment calls `router.replace()` to the other URL so the sidebar highlight and the bottom bar's guide link — both driven by `pathname` — stay correct without a full navigation.",
       ] },
-      { t: "p", text: "**Scanned sheets**: `POST /api/dispatch/scan-sheet` (`{ courier, location, consignmentIds }`) → `createScannedLoadSheet()` in `src/lib/dispatch.ts`. Each consignment is resolved through `app_order_ops` (`findByConsignment()`) and must be `in_pickup_packing`; `totalShipments`, `totalAmount`, and `codAmount` are summed server-side from each order's Create Package snapshot (never trusted from the client); the sheet is created `posted` with a `consignmentIds` array (shown as a `tags` column), then every order is dispatched through `runOrderAction(id, \"dispatch\", { loadSheet })`, which records the sheet reference on the order. The scanner UI (`ScanLoadSheetButton` in `src/components/dashboard/scanners.tsx`) looks each code up first with `GET /api/consignments/[consignmentId]` and rejects duplicates, parcels in the wrong stage, and parcels booked with a different courier. Scanners are keyboard-wedge: a focused input that submits on Enter." },
+      { t: "p", text: "**Scanned sheets**: `POST /api/dispatch/scan-sheet` (`{ courier, location, consignmentIds }`) → `createScannedLoadSheet()` in `src/lib/load-sheet-scan.ts` (kept out of `dispatch.ts` because it calls `runOrderAction()`, and `order-workflow.ts` itself imports `dispatch.ts`). Each consignment is resolved through `app_order_ops` (`findByConsignment()`) and must be `in_pickup_packing`, or `dispatched` with no `loadSheet`, and booked with the sheet's courier. A new Draft sheet is opened, every parcel goes through `runOrderAction(id, \"dispatch\" | \"add_to_load_sheet\", { target: sheetId })` — so totals come from each order's Create Package snapshot, never the client — and then `postLoadSheet()` posts it. The scanner UI (`ScanLoadSheetButton` in `src/components/dashboard/scanners.tsx`) looks each code up first with `GET /api/consignments/[consignmentId]` and rejects duplicates, parcels in the wrong stage, and parcels booked with a different courier. Scanners are keyboard-wedge: a focused input that submits on Enter." },
       { t: "p", text: "The `#` column uses the new `\"index\"` `ColumnType` — a display-only row-position number (1, 2, 3, ...) computed from the sorted/filtered/paginated row list in `resource-view.tsx`, not a stored field. `Date Created` / `Date Posted` use the new `\"datetime\"` `ColumnType` (`formatDateTime()`), which is why they render with a time (e.g. `Jul 30, 2026, 4:20 PM`) unlike the date-only columns elsewhere." },
       { t: "callout", tone: "info", title: "Modelled on courier load sheets, terminology may evolve", text: "The **Reconciliation** field is a best-guess interpretation (whether courier-collected COD has been settled with the store) — if your courier workflow means something different by it, the field and its options in `src/config/resources.ts` are easy to relabel." },
     ],
@@ -694,102 +699,12 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
   // ==========================================================================
   {
-    id: "sale-receipts",
-    title: "Sale Receipts",
-    category: "Sales",
-    everyday: [
-      { t: "p", text: "**Sale Receipts** is the same underlying sales data as Orders, shown as a simpler receipt-style list — order number, total, payment, gateway, channel, and date. Use it when you just need to look up or print what a customer was charged, without the operational status tabs Orders carries." },
-      { t: "ol", items: ["Open Sales then Sale Receipts.", "Search by order number or customer to find a specific sale.", "Click a row to open the full order page if you need more detail than the receipt view shows."] },
-      { t: "callout", tone: "info", title: "Not a separate ledger", text: "This isn't its own record — it's the same Shopify order data as the Orders page, read again and displayed with fewer columns. Editing an order's core fields (customer, total, payment) here or on Orders changes the same underlying order." },
-    ],
-    technical: [
-      { t: "p", text: "The resource is keyed `sale-receipts`; search covers `number` and `customer`. It's registered in `SHOPIFY_READERS` pointing at the exact same `readOrders()` function `orders` uses — no separate query, no separate row shape, just a lighter `columns`/`fields` set in `src/config/resources.ts` over identical rows." },
-      { t: "callout", tone: "warning", title: "No opsStatus here", text: "Because the GET route only calls `attachOrderOps()` when `resource === \"orders\"`, rows read through `sale-receipts` never get the operational-status overlay — there's no equivalent to Orders' status tabs on this page, by design." },
-    ],
-  },
-
-  // ==========================================================================
-  {
-    id: "invoices",
-    title: "Invoices",
-    category: "Sales",
-    everyday: [
-      { t: "p", text: "**Invoices** shows one invoice per order, generated automatically — you don't create these by hand. Tabs let you filter to what's Unpaid, Paid, or Overdue." },
-      {
-        t: "dl",
-        items: [
-          { term: "Invoice # / Order #", def: "The invoice's own reference (the order number with `-IN1` appended) and the order it bills." },
-          { term: "Status", def: "**Unpaid**, **Paid**, or **Overdue** — Overdue isn't set by hand, it's computed (see below)." },
-          { term: "Quantity / Total", def: "How many items the order has, and what the invoice is for." },
-          { term: "Invoice Date / Due Date", def: "When the invoice was raised and when it's due." },
-        ],
-      },
-      { t: "ol", items: ["Open Sales then Invoices.", "Click Unpaid to see what customers still owe.", "Click Overdue to see what's unpaid and aging — follow up on these first."] },
-      { t: "callout", tone: "warning", title: "Overdue is a rule, not a field", text: "An invoice shows Overdue once it's unpaid and more than 3 days old — there's no due-date logic beyond that heuristic yet. If your actual payment terms are different, that 3-day window is the one place to change it." },
-    ],
-    technical: [
-      { t: "p", text: "The resource is keyed `invoices`; search covers `invoiceNumber`, `orderNumber`, and `company`. It's entirely a **computed view over orders** — `readInvoices()` in `src/lib/shopify-reads.ts` runs its own light GraphQL query (name, customer, quantity, total, `displayFinancialStatus`, `createdAt`) rather than reusing `readOrders()`, since it needs none of the order-list columns and doesn't want to over-fetch." },
-      { t: "ul", items: ["`invoiceNumber` is derived client-side as `` `${order.name}-IN1` `` — there's no real Shopify invoice object or counter behind it.", "`status` is computed once per row: `paid` if `displayFinancialStatus` is `paid`; otherwise `overdue` if the order is more than 3 days old, else `unpaid`. This makes it a plain discrete value the generic `tabs` filter can match on — no date-range filtering logic needed in the UI.", "`dueDate` is currently always equal to `invoiceDate` (same-day terms) — there's no per-customer payment-terms concept to compute a real due date from yet.", "Read-only: `invoices` has no entry in `SHOPIFY_WRITERS`, so the drawer can open but saving will 405."] },
-    ],
-  },
-
-  // ==========================================================================
-  {
-    id: "packages",
-    title: "Packages",
-    category: "Sales",
-    everyday: [
-      { t: "p", text: "**Packages** tracks the packing stage for each order's shipment — has it been boxed up, is it dispatched, did booking with the courier fail. Tabs move roughly in the order packing actually happens: Draft, In Pickup And Packing, Packed, Dispatched, plus On Hold / Canceled / Duplicate / Booking Failed for anything that doesn't go smoothly." },
-      {
-        t: "dl",
-        items: [
-          { term: "Order # / Customer", def: "Which order this package belongs to, and who it's for." },
-          { term: "City / Location", def: "Where it's shipping to, and which of your locations is packing it." },
-          { term: "Courier / Consignment #", def: "Which courier is booked, and their tracking/consignment number for this parcel once booked." },
-          { term: "Status", def: "Where the package is in the packing pipeline — also which tab it's under." },
-        ],
-      },
-      { t: "ol", items: ["Open Sale Orders then Packages.", "Click In Pickup And Packing to see what your team should be boxing right now.", "Once boxed, move it to Packed.", "Once handed to the courier, move it to Dispatched and fill in the Consignment #.", "If the courier can't book it, mark it Booking Failed and follow up rather than leaving it stuck in an earlier stage."] },
-    ],
-    technical: [
-      { t: "p", text: "The resource is keyed `packages`, app-owned via the generic `src/lib/app-data.ts` CRUD path (`APP_OWNED_COLLECTIONS.packages = \"app_packages\"`) — plain MongoDB documents, no bespoke module, no server-generated reference number (staff enter `consignmentNumber` by hand once the courier provides one, same pattern as `returns`' RMA #). Search covers `orderNumber`, `customer`, and `consignmentNumber`." },
-      { t: "ul", items: ["`status` drives `tabs`: `draft`, `in_pickup_and_packing`, `packed`, `dispatched`, `on_hold`, `canceled`, `duplicate`, `booking_failed`.", "`location` and `courier` reuse the shared `LOCATION_OPTIONS` / `COURIER_OPTIONS` arrays in `src/config/resources.ts`, same as `dispatch`/`returns`.", "Not linked to Shopify fulfillments — `orderNumber` is a free-text field, not a resolved order id, so nothing here writes back to Shopify or reads Shopify's own fulfillment record."] },
-    ],
-  },
-
-  // ==========================================================================
-  {
-    id: "shipments",
-    title: "Shipments",
-    category: "Sales",
-    everyday: [
-      { t: "p", text: "**Shipments** is the courier-tracking view — once a package is dispatched, this is where you follow it from Booked through to Delivered (or through whatever goes wrong: a failed delivery attempt, a return in progress). It has the longest tab list on any page here because courier tracking has the most real-world states." },
-      {
-        t: "dl",
-        items: [
-          { term: "Ref # / Order #", def: "This shipment's own reference, and the order it's carrying." },
-          { term: "City / Country", def: "The delivery destination." },
-          { term: "Courier / Consignment #", def: "Who's carrying it, and their tracking number." },
-          { term: "Status", def: "Where the parcel is right now — Pending through Delivered, or one of the exception states (Delivery Attempted, Shipper Advice, Re-attempt, Return Request, No Response, Awaiting Return, Returned)." },
-        ],
-      },
-      { t: "ol", items: ["Open Sale Orders then Shipments.", "Click In Transit or Out For Delivery to see what's actively moving.", "If a courier reports a failed attempt, move it to Delivery Attempted or Re-attempt rather than leaving it In Transit.", "Once the customer has it, mark it Delivered.", "If it's coming back, move it through Return Request → Awaiting Return → Returned."] },
-      { t: "callout", tone: "info", title: "This is status tracking, not booking", text: "Nothing on this page actually books a shipment with a courier's API — Ref #, Consignment #, and Status are all recorded by hand (or however your courier-booking integration is wired up later). See the guide entry for Packages, which covers the step just before this one." },
-    ],
-    technical: [
-      { t: "p", text: "The resource is keyed `shipments`, app-owned via `src/lib/app-data.ts` (`APP_OWNED_COLLECTIONS.shipments = \"app_shipments\"`). Search covers `reference`, `orderNumber`, `customer`, and `consignmentNumber`." },
-      { t: "ul", items: ["`status` drives `tabs` — 14 values: `pending`, `booked`, `ready_to_dispatch`, `dispatched`, `in_transit`, `out_for_delivery`, `delivered`, `delivery_attempted`, `shipper_advice`, `re_attempt`, `return_request`, `no_response`, `awaiting_return`, `returned`.", "`dispatchLocation` and `courier` reuse the shared `LOCATION_OPTIONS` / `COURIER_OPTIONS` arrays.", "`country` defaults to `\"Pakistan\"` via `defaultValue` on the field — this app's operational data is Pakistan-market-specific end to end (see the courier list itself: Leopards, TCS, M&P, PostEx, Trax, Call Courier)."] },
-    ],
-  },
-
-  // ==========================================================================
-  {
     id: "return-load-sheets",
     title: "Return Load Sheets",
     category: "Sales",
     everyday: [
       { t: "p", text: "**Return Load Sheets** is Dispatch's mirror image — instead of grouping shipments going out with a courier, it groups returns a courier is handing back to you. Same idea, same fields, opposite direction: Draft while you're expecting it, Posted once the courier hands it over, Archived once it's settled." },
-      { t: "ol", items: ["Open Sale Orders then Return Load Sheets.", "Click New load sheet and pick the courier and location it's coming into.", "Leave it Draft while you're expecting the handover.", "Set it to Posted once the courier has physically handed the returns over — this stamps Date Posted.", "Once any COD implications are settled against Dispatch, set Reconciliation to Reconciled.", "Move old settled sheets to Archived."] },
+      { t: "ol", items: ["Open Sales then Return Load Sheets.", "Click New load sheet and pick the courier and location it's coming into.", "Leave it Draft while you're expecting the handover.", "Set it to Posted once the courier has physically handed the returns over — this stamps Date Posted.", "Once any COD implications are settled against Dispatch, set Reconciliation to Reconciled.", "Move old settled sheets to Archived."] },
     ],
     technical: [
       { t: "p", text: "The resource is keyed `return-load-sheets`. `src/lib/dispatch.ts` was generalized from a `dispatch`-only module into a `LoadSheetResource`-parameterized one (`\"dispatch\" | \"return-load-sheets\"`) rather than duplicated — same functions, a different Mongo collection (`app_return_load_sheets`), counter id, and reference prefix (`RL001`, `RL002`, ... instead of `LS001`) per direction. The API routes (`route.ts` / `[id]/route.ts`) pass the resource key straight through to `listLoadSheets()` / `createLoadSheet()` / `updateLoadSheet()` / `deleteLoadSheet()`." },
@@ -813,7 +728,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Assigned To", def: "Which staff member owns following up with this lead." },
         ],
       },
-      { t: "ol", items: ["Open Sale Orders then Leads.", "Click New and fill in the contact and how they reached you.", "Assign it to whoever should follow up.", "Move it through Contacted → Qualified as the conversation progresses.", "Mark it Converted once they place an order, or Lost if it goes nowhere."] },
+      { t: "ol", items: ["Open Sales then Leads.", "Click New and fill in the contact and how they reached you.", "Assign it to whoever should follow up.", "Move it through Contacted → Qualified as the conversation progresses.", "Mark it Converted once they place an order, or Lost if it goes nowhere."] },
       { t: "callout", tone: "warning", title: "No automatic conversion", text: "Marking a lead Converted doesn't create a customer or order record — that's a manual judgement call for now, not a wired-up side effect." },
     ],
     technical: [
@@ -1142,7 +1057,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         ],
       },
       { t: "callout", tone: "warning", title: "Why there is no permanent token anymore", text: "Shopify retired the old admin-created apps that handed out permanent 'shpat_' tokens. The current model exchanges your Client ID + Secret for short-lived keys that expire and are refreshed automatically — safer, because a leaked key goes stale on its own. You never manage those keys; SuedeBucks does." },
-      { t: "callout", tone: "warning", title: "\"This app is not approved to access the Order object\"", text: "If pages that touch customer or order data (Orders, Sale Receipts, Invoices, Customers) show this error even with a working connection, it isn't a scope problem — it's Shopify's separate **Protected Customer Data** approval. Any field that's personally identifiable (name, email, phone, address) is blocked app-wide until you request access in the **Partner Dashboard** (Apps → your app → API access → Protected customer data access → Request access). For a custom app built for one store, that's usually approved within minutes to a day, not a long review." },
+      { t: "callout", tone: "warning", title: "\"This app is not approved to access the Order object\"", text: "If pages that touch customer or order data (Orders, Customers) show this error even with a working connection, it isn't a scope problem — it's Shopify's separate **Protected Customer Data** approval. Any field that's personally identifiable (name, email, phone, address) is blocked app-wide until you request access in the **Partner Dashboard** (Apps → your app → API access → Protected customer data access → Request access). For a custom app built for one store, that's usually approved within minutes to a day, not a long review." },
     ],
     technical: [
       { t: "p", text: "**Order intake webhook**: once connected, the page shows a **Register webhook** control. `registerOrderWebhookAction()` in `src/lib/integration-actions.ts` checks for an existing `ORDERS_CREATE` subscription to `<origin>/api/webhooks/orders-create` and otherwise calls `webhookSubscriptionCreate(topic: ORDERS_CREATE, webhookSubscription: { uri })`. The origin must be public HTTPS (localhost is rejected — Shopify can't deliver there), and deliveries are HMAC-verified with the stored client secret, so this needs the client-credentials connection method." },

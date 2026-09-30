@@ -117,6 +117,7 @@ export async function attachOrderOps(rows: Row[]): Promise<Row[]> {
         ...r,
         opsStatus: d?.opsStatus ?? DEFAULT_STATUS,
         consignmentId: d?.consignmentId,
+        loadSheet: d?.loadSheet,
         // The booked courier wins over Shopify's fulfillment tracking company.
         courier: d?.courier || r.courier,
         flags: d?.flags ?? [],

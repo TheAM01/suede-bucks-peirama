@@ -14,6 +14,7 @@ import {
   X,
   Loader2,
   PackageCheck,
+  Truck,
 } from "@/components/icons";
 import type { Row } from "@/config/resource-types";
 import {
@@ -27,6 +28,7 @@ import {
 import { checkAddress } from "@/lib/address-check";
 import type { ShippingAddressFields } from "@/lib/shopify-order-detail";
 import type { SelectionContext } from "./resource-view";
+import { useResource, useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -44,6 +46,8 @@ export interface ActionResponse {
   error?: string;
   needsConfirmation?: string;
   status?: string;
+  loadSheet?: string;
+  loadSheetId?: string;
 }
 
 /** POST one control-panel action for one order. Never throws. */
@@ -74,6 +78,7 @@ const BUTTON_ORDER: OrderAction[] = [
   "assign_consignment",
   "print_label",
   "dispatch",
+  "add_to_load_sheet",
   "mark_fulfilled",
   "unpackage",
   "move_exception",
@@ -89,6 +94,7 @@ const ICON: Partial<Record<OrderAction, IconType>> = {
   assign_consignment: QrCode,
   print_label: Printer,
   dispatch: Send,
+  add_to_load_sheet: Truck,
   mark_fulfilled: PackageCheck,
   cancel: X,
   discard: Trash2,
@@ -104,7 +110,10 @@ const PRIMARY: OrderAction[] = [
 ];
 const DESTRUCTIVE: OrderAction[] = ["discard", "cancel"];
 /** actions that open their own dialog instead of running straight away */
-type DialogKind = "modify" | "discard" | "consignment" | "cancel" | "confirm_malformed";
+type DialogKind = "modify" | "discard" | "consignment" | "cancel" | "confirm_malformed" | "load_sheet";
+
+/** Actions that put a parcel on a load sheet — they ask which sheet first. */
+const SHEET_ACTIONS: OrderAction[] = ["dispatch", "add_to_load_sheet"];
 
 const num = (rows: Row[], noun = "order") => `${rows.length} ${rows.length === 1 ? noun : `${noun}s`}`;
 
@@ -123,6 +132,7 @@ export function OrderControlPanel({
   onDone: (message: { tone: "success" | "error"; text: string } | null) => void;
 }) {
   const { rows, clear } = ctx;
+  const store = useStore();
   const statuses = Array.from(new Set(rows.map((r) => String(r.opsStatus ?? "active"))));
   const status = statuses.length === 1 ? statuses[0] : null;
   const [busy, setBusy] = React.useState(false);
@@ -130,10 +140,12 @@ export function OrderControlPanel({
   const [pendingConfirm, setPendingConfirm] = React.useState<{ rows: Row[]; message: string } | null>(null);
 
   const actions = status
-    ? BUTTON_ORDER.filter((a) => rows.every((r) => canRun(a, status, r.courier))).filter(
-        (a) => a !== "modify" || rows.length === 1,
-      )
+    ? BUTTON_ORDER.filter((a) => rows.every((r) => canRun(a, status, r.courier)))
+        .filter((a) => a !== "modify" || rows.length === 1)
+        // Only offered for dispatched orders that aren't on a sheet yet.
+        .filter((a) => a !== "add_to_load_sheet" || rows.every((r) => !r.loadSheet))
     : [];
+  const [sheetAction, setSheetAction] = React.useState<OrderAction>("dispatch");
 
   /** Run one action across rows; collect confirmations the server asks for instead of failing them. */
   async function run(
@@ -142,10 +154,24 @@ export function OrderControlPanel({
     payload: Record<string, unknown> = {},
   ): Promise<void> {
     setBusy(true);
-    const results = await Promise.all(
-      targets.map(async (r) => ({ row: r, res: await postOrderAction(r.id, action, payload) })),
-    );
+    // One at a time: a batch dispatched onto a "new" sheet must share the sheet
+    // the first order opened (per courier), not open one sheet per order.
+    const results: { row: Row; res: ActionResponse }[] = [];
+    const newSheetFor = new Map<string, string>();
+    for (const r of targets) {
+      const courier = String(r.courier ?? "");
+      const reuse = payload.target === "new" ? newSheetFor.get(courier) : undefined;
+      const res = await postOrderAction(r.id, action, reuse ? { ...payload, target: reuse } : payload);
+      if (payload.target === "new" && res.loadSheetId && !newSheetFor.has(courier)) {
+        newSheetFor.set(courier, res.loadSheetId);
+      }
+      results.push({ row: r, res });
+    }
     setBusy(false);
+    if (SHEET_ACTIONS.includes(action)) store.refresh("dispatch");
+    const sheets = Array.from(
+      new Set(results.map((x) => x.res.loadSheet).filter((s): s is string => Boolean(s))),
+    );
 
     const needConfirm = results.filter((x) => x.res.needsConfirmation);
     const failed = results.filter((x) => x.res.error);
@@ -163,7 +189,12 @@ export function OrderControlPanel({
     if (errors.length) {
       onDone({ tone: "error", text: errors.join(" · ") });
     } else if (done > 0) {
-      onDone({ tone: "success", text: `${ACTION_LABEL[action]} — ${done} ${done === 1 ? "order" : "orders"} updated.` });
+      onDone({
+        tone: "success",
+        text: `${ACTION_LABEL[action]} — ${done} ${done === 1 ? "order" : "orders"} updated${
+          sheets.length ? ` · on load sheet ${sheets.join(", ")}` : ""
+        }.`,
+      });
     } else {
       onDone(null);
     }
@@ -182,6 +213,10 @@ export function OrderControlPanel({
         return setDialog("cancel");
       case "print_label":
         return printLabels();
+      case "dispatch":
+      case "add_to_load_sheet":
+        setSheetAction(action);
+        return setDialog("load_sheet");
       default:
         return run(action, rows);
     }
@@ -304,6 +339,18 @@ export function OrderControlPanel({
         />
       ) : null}
 
+      {dialog === "load_sheet" ? (
+        <LoadSheetDialog
+          rows={rows}
+          action={sheetAction}
+          onClose={close}
+          onSubmit={(target) => {
+            close();
+            void run(sheetAction, rows, { target });
+          }}
+        />
+      ) : null}
+
       {dialog === "cancel" && status === "in_pickup_packing" ? (
         <ConfirmDialog
           open
@@ -335,6 +382,88 @@ export function OrderControlPanel({
 }
 
 // --- dialogs -------------------------------------------------------------------------
+
+/**
+ * Which load sheet dispatched parcels go on: the courier's open Draft sheet
+ * (the default — opened automatically if there's none), a specific Draft
+ * sheet, or a new one. Specific sheets are only offered when every selected
+ * order uses the same courier, since a sheet belongs to one courier.
+ */
+function LoadSheetDialog({
+  rows,
+  action,
+  onClose,
+  onSubmit,
+}: {
+  rows: Row[];
+  action: OrderAction;
+  onClose: () => void;
+  onSubmit: (target: string) => void;
+}) {
+  const { rows: sheets, loading } = useResource("dispatch");
+  const couriers = Array.from(new Set(rows.map((r) => String(r.courier ?? ""))));
+  const courier = couriers.length === 1 ? couriers[0] : null;
+  const drafts = courier
+    ? sheets.filter((s) => s.status === "draft" && s.courier === courier)
+    : [];
+  const [target, setTarget] = React.useState("auto");
+
+  const options = [
+    {
+      value: "auto",
+      label: courier
+        ? drafts.length
+          ? `${courier}'s open draft sheet (${String(drafts[0].reference)})`
+          : `${courier}'s open draft sheet — none yet, one will be started`
+        : "Each courier's open draft sheet (started if needed)",
+    },
+    ...drafts.slice(1).map((s) => ({
+      value: s.id,
+      label: `${String(s.reference)} · ${String(s.location)} · ${Number(s.totalShipments ?? 0)} parcels`,
+    })),
+    { value: "new", label: courier ? `A new ${courier} load sheet` : "A new load sheet per courier" },
+  ];
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`${ACTION_LABEL[action]} — ${num(rows)}`}
+      description="Dispatched parcels go on a load sheet so the courier's handover and COD are accounted for. Post the sheet from the Dispatch page when the rider leaves."
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={() => onSubmit(target)}>
+            <Truck />
+            {ACTION_LABEL[action]}
+          </Button>
+        </>
+      }
+    >
+      <fieldset className="space-y-2">
+        <legend className="mb-2 text-sm font-medium">Put them on</legend>
+        {options.map((o) => (
+          <label
+            key={o.value}
+            className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-sm transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+          >
+            <input
+              type="radio"
+              name="load-sheet-target"
+              className="mt-0.5 size-4 accent-primary"
+              checked={target === o.value}
+              onChange={() => setTarget(o.value)}
+            />
+            <span>{o.label}</span>
+          </label>
+        ))}
+        {loading ? <p className="text-xs text-muted-foreground">Loading open sheets…</p> : null}
+      </fieldset>
+    </Dialog>
+  );
+}
 
 function ReasonDialog({
   title,

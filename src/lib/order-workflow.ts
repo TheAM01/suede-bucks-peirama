@@ -13,6 +13,7 @@ import { applyTransition, getOrderOps, intakeOrder } from "./order-ops";
 import { readOrderBrief } from "./shopify-order-detail";
 import { fulfillOrder, setOrderTags, updateOrderShipping } from "./shopify-writes";
 import { bookConsignment } from "./courier-booking";
+import { attachToLoadSheet, resolveLoadSheet } from "./dispatch";
 
 /**
  * The Orders workflow: every control-panel action (Modify, Move, Discard,
@@ -36,6 +37,9 @@ export interface ActionResult {
   needsConfirmation?: string;
   /** the status the order ended up in */
   status?: string;
+  /** dispatch / add_to_load_sheet: the sheet the parcel went on */
+  loadSheet?: string;
+  loadSheetId?: string;
 }
 
 const str = (v: unknown): string => (v == null ? "" : String(v)).trim();
@@ -202,14 +206,37 @@ export async function runOrderAction(
           );
     }
 
-    case "dispatch": {
+    // Every dispatched parcel goes on a load sheet: `target` is "auto" (the
+    // courier's open Draft sheet, opened if none — the default, used by scans),
+    // "new", or a Draft sheet's id. See resolveLoadSheet() in dispatch.ts.
+    case "dispatch":
+    case "add_to_load_sheet": {
+      if (action === "add_to_load_sheet" && doc.loadSheet) {
+        return { error: `Already on load sheet ${doc.loadSheet}.` };
+      }
+      if (!doc.consignmentId || !doc.courier) {
+        return { error: "No consignment on this order — assign one before it goes on a load sheet." };
+      }
+      const resolved = await resolveLoadSheet(doc.courier, payload.target);
+      if (!resolved.sheet) return { error: resolved.error };
+      const { id: sheetId, reference } = resolved.sheet;
+
       const via = str(payload.via) || "button";
-      const loadSheet = str(payload.loadSheet);
-      return move(
-        "dispatched",
-        { dispatchedAt: at, ...(loadSheet ? { loadSheet } : {}) },
-        loadSheet ? `Dispatched on load sheet ${loadSheet}` : `Dispatched (${via})`,
-      );
+      const res =
+        action === "dispatch"
+          ? await move("dispatched", { dispatchedAt: at, loadSheet: reference }, `Dispatched (${via}) onto load sheet ${reference}`)
+          : await move(from, { loadSheet: reference }, `Added to load sheet ${reference}`);
+      if (res.error) return res;
+
+      const attached = await attachToLoadSheet(sheetId, {
+        consignmentId: doc.consignmentId,
+        total: doc.total ?? 0,
+        codAmount: doc.codAmount ?? 0,
+      });
+      if (attached.error) {
+        return { error: `${action === "dispatch" ? "Dispatched" : "Recorded"}, but ${reference} wasn't updated: ${attached.error}` };
+      }
+      return { ...res, loadSheet: reference, loadSheetId: sheetId };
     }
 
     case "mark_fulfilled": {

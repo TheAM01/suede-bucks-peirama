@@ -176,41 +176,6 @@ async function readOrders(): Promise<ShopifyReadResult> {
   return { rows };
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-/** Invoices are a computed view over orders — no separate Shopify object, no separate data fetch. Overdue is a heuristic: unpaid and more than 3 days old. */
-async function readInvoices(): Promise<ShopifyReadResult> {
-  const q = `{
-    orders(first: 100, sortKey: CREATED_AT, reverse: true) {
-      nodes {
-        id name createdAt subtotalLineItemsQuantity displayFinancialStatus
-        customer { displayName }
-        totalPriceSet { shopMoney { amount } }
-      }
-    }
-  }`;
-  const res = await shopifyQuery(q);
-  if (!res.ok) return { rows: [], error: res.error };
-  const now = Date.now();
-  const rows = nodes(res.data, "orders").map((o): Row => {
-    const paid = lower(o.displayFinancialStatus) === "paid";
-    const createdAt = str(o.createdAt);
-    const ageMs = createdAt ? now - new Date(createdAt).getTime() : 0;
-    const status = paid ? "paid" : ageMs > 3 * DAY_MS ? "overdue" : "unpaid";
-    return {
-      id: gid(o.id),
-      invoiceNumber: `${str(o.name)}-IN1`,
-      orderNumber: str(o.name),
-      company: str(get(o, "customer", "displayName")) || "Guest",
-      quantity: num(o.subtotalLineItemsQuantity),
-      total: num(get(o, "totalPriceSet", "shopMoney", "amount")),
-      status,
-      invoiceDate: date(o.createdAt),
-      dueDate: date(o.createdAt),
-    };
-  });
-  return { rows };
-}
-
 async function readCollections(): Promise<ShopifyReadResult> {
   const q = `{
     collections(first: 100, sortKey: UPDATED_AT, reverse: true) {
@@ -453,8 +418,6 @@ export const SHOPIFY_READERS: Record<string, () => Promise<ShopifyReadResult>> =
   products: readProducts,
   customers: readCustomers,
   orders: readOrders,
-  "sale-receipts": readOrders,
-  invoices: readInvoices,
   collections: readCollections,
   inventory: readInventory,
   categories: readCategories,

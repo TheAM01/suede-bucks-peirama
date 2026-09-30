@@ -14,8 +14,6 @@ export const APP_OWNED_COLLECTIONS: Record<string, string> = {
   "pos-staff": "app_pos_staff",
   segments: "app_segments",
   returns: "app_returns",
-  packages: "app_packages",
-  shipments: "app_shipments",
   leads: "app_leads",
 };
 

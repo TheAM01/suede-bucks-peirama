@@ -50,6 +50,9 @@ const REDACT_ON_UNINSTALL = [
   "app_dispatch_load_sheets",
   "app_return_load_sheets",
   "app_order_ops",
+  // Retired pages (Packages, Shipments) — their old documents are still store data.
+  "app_packages",
+  "app_shipments",
 ];
 
 /** shop/redact — clear every app-owned collection. Single-tenant app: the shop's data is all of it. */

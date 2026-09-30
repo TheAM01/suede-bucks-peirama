@@ -3,8 +3,6 @@ import { ObjectId } from "mongodb";
 import { getDb, isDbConfigured } from "./db";
 import { DB_UNAVAILABLE } from "./app-data";
 import type { Row } from "@/config/resource-types";
-import { findByConsignment } from "./order-ops";
-import { runOrderAction } from "./order-workflow";
 
 /**
  * Load sheets — the courier handover manifest for a batch of shipments moving
@@ -18,6 +16,11 @@ import { runOrderAction } from "./order-workflow";
  * per-direction counter, never duplicated. `datePosted` is stamped the first
  * time a sheet's status becomes `posted` and is never overwritten after —
  * archiving a posted sheet later leaves it as-is.
+ *
+ * Outgoing sheets are also where dispatched orders land: every dispatch puts
+ * the parcel on a sheet (resolveLoadSheet + attachToLoadSheet below), whose
+ * `consignmentIds` and totals grow as parcels are added. A Draft sheet is
+ * still being loaded; posting it is the courier handover.
  */
 
 export type LoadSheetResource = "dispatch" | "return-load-sheets";
@@ -215,6 +218,14 @@ export async function deleteLoadSheet(
   try {
     const db = await getDb();
     if (!db) return { error: DB_UNAVAILABLE };
+    // Orders point at their sheet by reference — deleting a loaded sheet would orphan them.
+    const existing = await db.collection<Doc>(COLLECTION[resource]).findOne({ _id: new ObjectId(id) });
+    const loaded = Array.isArray(existing?.consignmentIds) ? existing.consignmentIds.length : 0;
+    if (loaded > 0) {
+      return {
+        error: `${existing?.reference} has ${loaded} ${loaded === 1 ? "parcel" : "parcels"} on it — it can't be deleted. Archive it instead.`,
+      };
+    }
     await db.collection(COLLECTION[resource]).deleteOne({ _id: new ObjectId(id) });
     return {};
   } catch {
@@ -222,63 +233,139 @@ export async function deleteLoadSheet(
   }
 }
 
+
+// --- dispatched parcels onto sheets ------------------------------------------------
+
+/** Where automatically opened sheets are dispatched from. */
+const DEFAULT_LOCATION = "Main Warehouse";
+
+export interface SheetRef {
+  id: string;
+  reference: string;
+}
+
 /**
- * Build a posted dispatch load sheet from scanned label QR codes: each code is
- * a consignment id, resolved to its order through `app_order_ops`. Every
- * parcel must be In Pickup & Packing (label printed, not yet dispatched);
- * totals and COD are summed server-side from the Create Package snapshot,
- * never trusted from the client. Posting the sheet is the courier handover,
- * so each order on it is then dispatched with the sheet's reference.
+ * Per-courier lock so parallel dispatches (a batch from the control panel,
+ * two scanners at once) can't each open their own "automatic" draft sheet.
+ * In-process only — fine for this single-server deployment.
  */
-export async function createScannedLoadSheet(input: {
-  courier?: unknown;
-  location?: unknown;
-  consignmentIds?: unknown;
-}): Promise<{ row?: Row; error?: string; dispatchErrors?: string[] }> {
-  const ids = Array.isArray(input.consignmentIds)
-    ? Array.from(new Set(input.consignmentIds.map((v) => str(v).trim()).filter(Boolean)))
-    : [];
-  if (ids.length === 0) return { error: "Scan at least one package." };
+const sheetLocks = new Map<string, Promise<unknown>>();
+function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = sheetLocks.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  sheetLocks.set(key, next.catch(() => undefined));
+  return next;
+}
 
-  const parcels = [];
-  for (const id of ids) {
-    const { doc, error } = await findByConsignment(id);
-    if (error) return { error };
-    if (!doc) return { error: `No order has consignment ${id}.` };
-    if (doc.opsStatus !== "in_pickup_packing") {
-      return { error: `${doc.number || id} isn't ready for pickup (label not printed, or already dispatched).` };
-    }
-    parcels.push(doc);
-  }
-
-  const created = await createLoadSheet("dispatch", {
-    courier: input.courier,
-    location: input.location,
-    status: "posted",
-    reconciliation: "pending",
-    totalShipments: parcels.length,
-    totalAmount: parcels.reduce((n, p) => n + numOr0(p.total), 0),
-    codAmount: parcels.reduce((n, p) => n + numOr0(p.codAmount), 0),
-    weight: 0,
-    notes: "",
-  });
-  if (!created.row) return { error: created.error };
-
-  const reference = String(created.row.reference);
+/**
+ * Pick the load sheet a dispatched parcel goes on.
+ * - `"auto"` (default): the courier's newest Draft sheet, opening one if there's none.
+ * - `"new"`: always start a fresh Draft sheet.
+ * - a sheet id: that sheet — must be a Draft for the same courier.
+ */
+export async function resolveLoadSheet(
+  courier: string,
+  target: unknown,
+  location: string = DEFAULT_LOCATION,
+): Promise<{ sheet?: SheetRef; error?: string }> {
+  if (!courier) return { error: "The order has no courier — assign a consignment first." };
+  const t = str(target) || "auto";
   try {
     const db = await getDb();
-    await db?.collection(COLLECTION.dispatch).updateOne(
-      { _id: new ObjectId(created.row.id) },
-      { $set: { consignmentIds: ids } },
-    );
-  } catch {
-    // The sheet exists either way; only the consignment list is missing.
-  }
+    if (!db) return { error: DB_UNAVAILABLE };
+    const col = db.collection<Doc>(COLLECTION.dispatch);
 
-  const dispatchErrors: string[] = [];
-  for (const p of parcels) {
-    const res = await runOrderAction(p._id, "dispatch", { loadSheet: reference });
-    if (res.error) dispatchErrors.push(`${p.number || p.consignmentId}: ${res.error}`);
+    if (t !== "auto" && t !== "new") {
+      if (!ObjectId.isValid(t)) return { error: "Pick a load sheet." };
+      const doc = await col.findOne({ _id: new ObjectId(t) });
+      if (!doc) return { error: "That load sheet no longer exists." };
+      if (doc.status !== "draft") {
+        return { error: `${doc.reference} is already ${doc.status} — parcels can only be added to a Draft sheet.` };
+      }
+      if (doc.courier !== courier) {
+        return { error: `${doc.reference} is for ${doc.courier}, but this parcel is booked with ${courier}.` };
+      }
+      return { sheet: { id: t, reference: String(doc.reference) } };
+    }
+
+    const open = async (): Promise<{ sheet?: SheetRef; error?: string }> => {
+      const created = await createLoadSheet("dispatch", {
+        courier,
+        location,
+        status: "draft",
+        reconciliation: "pending",
+        totalShipments: 0,
+        totalAmount: 0,
+        codAmount: 0,
+        weight: 0,
+        notes: "Opened automatically when orders were dispatched.",
+      });
+      if (!created.row) return { error: created.error };
+      return { sheet: { id: created.row.id, reference: String(created.row.reference) } };
+    };
+
+    if (t === "new") return open();
+    return withLock(`dispatch:${courier}`, async () => {
+      const draft = await col.find({ courier, status: "draft" }).sort({ _id: -1 }).limit(1).next();
+      if (draft) return { sheet: { id: draft._id.toHexString(), reference: String(draft.reference) } };
+      return open();
+    });
+  } catch {
+    return { error: DB_UNAVAILABLE };
   }
-  return { row: { ...created.row, consignmentIds: ids }, dispatchErrors };
+}
+
+/** Add one parcel to a sheet: its consignment id plus its value and COD in the totals. Idempotent per consignment. */
+/** The fields attachToLoadSheet() touches, typed for $push / $inc. */
+type SheetTotals = {
+  _id: ObjectId;
+  consignmentIds?: string[];
+  totalShipments?: number;
+  totalAmount?: number;
+  codAmount?: number;
+  updatedAt?: string;
+};
+
+export async function attachToLoadSheet(
+  sheetId: string,
+  parcel: { consignmentId: string; total: number; codAmount: number },
+): Promise<{ error?: string }> {
+  if (!ObjectId.isValid(sheetId)) return { error: "Invalid load sheet id." };
+  try {
+    const db = await getDb();
+    if (!db) return { error: DB_UNAVAILABLE };
+    await db.collection<SheetTotals>(COLLECTION.dispatch).updateOne(
+      { _id: new ObjectId(sheetId), consignmentIds: { $ne: parcel.consignmentId } },
+      {
+        $push: { consignmentIds: parcel.consignmentId },
+        $inc: {
+          totalShipments: 1,
+          totalAmount: numOr0(parcel.total),
+          codAmount: numOr0(parcel.codAmount),
+        },
+        $set: { updatedAt: new Date().toISOString() },
+      },
+    );
+    return {};
+  } catch {
+    return { error: DB_UNAVAILABLE };
+  }
+}
+
+/** Post a sheet (courier handover), stamping Date Posted if it hasn't been. */
+export async function postLoadSheet(sheetId: string): Promise<{ row?: Row; error?: string }> {
+  if (!ObjectId.isValid(sheetId)) return { error: "Invalid load sheet id." };
+  try {
+    const db = await getDb();
+    if (!db) return { error: DB_UNAVAILABLE };
+    const col = db.collection<Doc>(COLLECTION.dispatch);
+    const oid = new ObjectId(sheetId);
+    const now = new Date().toISOString();
+    await col.updateOne({ _id: oid, datePosted: "" }, { $set: { datePosted: now } });
+    await col.updateOne({ _id: oid }, { $set: { status: "posted", updatedAt: now } });
+    const doc = await col.findOne({ _id: oid });
+    return doc ? { row: toRow(doc) } : { error: "That load sheet no longer exists." };
+  } catch {
+    return { error: DB_UNAVAILABLE };
+  }
 }

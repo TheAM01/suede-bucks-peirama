@@ -75,10 +75,18 @@ export function ScanDispatchButton() {
     setBusy(true);
     try {
       const res = await fetch(`/api/consignments/${encodeURIComponent(code)}`, { method: "POST" });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; number?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        number?: string;
+        loadSheet?: string;
+      };
       setLines((prev) => [
         res.ok
-          ? { code, ok: true, text: `${body.number ?? code} dispatched.` }
+          ? {
+              code,
+              ok: true,
+              text: `${body.number ?? code} dispatched${body.loadSheet ? ` onto ${body.loadSheet}` : ""}.`,
+            }
           : { code, ok: false, text: body.error ?? `Server responded ${res.status}.` },
         ...prev,
       ]);
@@ -91,7 +99,10 @@ export function ScanDispatchButton() {
 
   function close() {
     setOpen(false);
-    if (lines.some((l) => l.ok)) store.refresh("orders");
+    if (lines.some((l) => l.ok)) {
+      store.refresh("orders");
+      store.refresh("dispatch");
+    }
     setLines([]);
   }
 
@@ -107,7 +118,7 @@ export function ScanDispatchButton() {
         open={open}
         onClose={close}
         title="Scan to dispatch"
-        description="Each scanned label dispatches its order. Only orders In Pickup & Packing (label printed) can be dispatched."
+        description="Each scanned label dispatches its order onto its courier's open draft load sheet. Only orders In Pickup & Packing (label printed) can be dispatched."
         footer={<Button onClick={close}>Done{dispatched ? ` (${dispatched} dispatched)` : ""}</Button>}
       >
         <div className="space-y-4">
@@ -141,6 +152,7 @@ interface Parcel {
   opsStatus: string;
   codAmount: number;
   total: number;
+  loadSheet: string;
 }
 
 /** Dispatch page: build a posted load sheet by scanning every parcel handed to one courier. */
@@ -173,8 +185,10 @@ export function ScanLoadSheetButton() {
       const p = body.consignment;
       if (!res.ok || !p) {
         setScanError(body.error ?? `Server responded ${res.status}.`);
-      } else if (p.opsStatus !== "in_pickup_packing") {
-        setScanError(`${p.number || code} is ${statusLabel(p.opsStatus)} — only In Pickup & Packing parcels can go on a sheet.`);
+      } else if (p.loadSheet) {
+        setScanError(`${p.number || code} is already on load sheet ${p.loadSheet}.`);
+      } else if (p.opsStatus !== "in_pickup_packing" && p.opsStatus !== "dispatched") {
+        setScanError(`${p.number || code} is ${statusLabel(p.opsStatus)} — only parcels with a printed label can go on a sheet.`);
       } else if (p.courier && p.courier !== courier) {
         setScanError(`${p.number || code} is booked with ${p.courier}, not ${courier}.`);
       } else {
