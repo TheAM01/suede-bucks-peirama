@@ -170,14 +170,33 @@ export function GuideContent() {
               </p>
             </div>
           </div>
-          <Segmented<Tab>
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: "everyday", label: "For everyday use" },
-              { value: "technical", label: "Technical" },
-            ]}
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {/* The side table of contents is desktop-only; smaller screens jump from here. */}
+            <select
+              value={activeId}
+              onChange={(e) => scrollTo(e.target.value)}
+              aria-label="Jump to section"
+              className="h-9 rounded-lg border border-input bg-card px-3 text-sm lg:hidden"
+            >
+              {groups.map((g) => (
+                <optgroup key={g.category} label={g.category}>
+                  {g.sections.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <Segmented<Tab>
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "everyday", label: "For everyday use" },
+                { value: "technical", label: "Technical" },
+              ]}
+            />
+          </div>
         </div>
 
         <div className="space-y-12 pb-24">

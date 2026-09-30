@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Menu as MenuIcon,
@@ -42,6 +43,8 @@ export function Topbar({
   const pathname = usePathname();
   const router = useRouter();
   const { search, setSearch } = useDashboardUI();
+  const [mobileSearch, setMobileSearch] = React.useState(false);
+  const showMobileSearch = mobileSearch || search.length > 0;
   const nav = navItemForPath(pathname);
 
   const title = nav?.title ?? "Dashboard";
@@ -49,7 +52,7 @@ export function Topbar({
   const category = nav?.category;
 
   return (
-    <header className="sticky top-0 z-30 h-16 shrink-0 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/65">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/65">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 md:px-8">
         <button
           type="button"
@@ -97,6 +100,18 @@ export function Topbar({
             className="pl-9"
           />
         </div>
+
+        {/* Search toggle — phones only */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="sm:hidden"
+          aria-label="Search this page"
+          aria-expanded={showMobileSearch}
+          onClick={() => setMobileSearch((v) => !v)}
+        >
+          <Search />
+        </Button>
 
         {/* Page settings */}
         <Menu>
@@ -174,6 +189,20 @@ export function Topbar({
           </MenuContent>
         </Menu>
       </div>
+      {showMobileSearch ? (
+        <div className="border-t border-border px-4 py-2 sm:hidden">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search this page…"
+              className="pl-9"
+            />
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }

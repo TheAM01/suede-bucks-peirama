@@ -375,19 +375,8 @@ export function ResourceView({
               {source === "shopify" && readOnly ? " · view-only" : ""}
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {toolbar}
-            {config.tabs ? (
-              <Segmented
-                size="sm"
-                value={tab}
-                onChange={setTab}
-                options={[
-                  { value: "all", label: "All" },
-                  ...config.tabs.options,
-                ]}
-              />
-            ) : null}
             {!readOnly ? (
               <Button onClick={openCreate}>
                 <Plus />
@@ -396,6 +385,18 @@ export function ResourceView({
             ) : null}
           </div>
         </div>
+
+        {/* Stage tabs — their own row, scrolling sideways when there are many (Orders has 16) */}
+        {config.tabs ? (
+          <div className="overflow-x-auto border-b border-border px-5 py-3">
+            <Segmented
+              size="sm"
+              value={tab}
+              onChange={setTab}
+              options={[{ value: "all", label: "All" }, ...config.tabs.options]}
+            />
+          </div>
+        ) : null}
 
         {paged.length === 0 ? (
           <div className="p-5">

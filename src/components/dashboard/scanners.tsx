@@ -40,7 +40,7 @@ function ScanInput({ onScan, disabled }: { onScan: (code: string) => void; disab
         ref={ref}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Scan a label QR, or type the consignment ID + Enter"
+        placeholder="Scan a label, or type a consignment ID"
         aria-label="Consignment ID"
         autoComplete="off"
         disabled={disabled}

@@ -209,7 +209,7 @@ export function BottomBar() {
         </div>
 
         {/* Right: wordmark */}
-        <div className="flex items-center gap-1.5 justify-self-end text-muted-foreground">
+        <div className="hidden items-center gap-1.5 justify-self-end text-muted-foreground sm:flex">
           <Activity className="size-3.5 text-primary" />
           <span className="font-grotesk font-semibold tracking-tight">
             SuedeBucks/Peirama

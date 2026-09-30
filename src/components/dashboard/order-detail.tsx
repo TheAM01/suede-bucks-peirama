@@ -137,13 +137,13 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
             </span>
             <div className="min-w-0 flex-1 pt-1">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                <p className="font-medium leading-snug">{e.title}</p>
+                <p className="min-w-0 font-medium leading-snug [overflow-wrap:anywhere]">{e.title}</p>
                 <time className="shrink-0 text-xs tabular-nums text-muted-foreground">
                   {formatDateTime(e.at)}
                 </time>
               </div>
               {e.detail ? (
-                <p className="mt-0.5 text-sm text-muted-foreground">{e.detail}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground [overflow-wrap:anywhere]">{e.detail}</p>
               ) : null}
               {e.amount !== undefined && e.amount > 0 ? (
                 <p className="mt-0.5 text-sm font-medium tabular-nums">
@@ -324,7 +324,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main column */}
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Timeline</CardTitle>
@@ -462,7 +462,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
         </div>
 
         {/* Side column */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {ops ? <WorkflowCard orderId={order.id} ops={ops} /> : null}
           <Card>
             <CardHeader>

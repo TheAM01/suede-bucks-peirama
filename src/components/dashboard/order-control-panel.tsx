@@ -236,13 +236,18 @@ export function OrderControlPanel({
 
   return (
     <>
-      <div className="sticky bottom-8 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
+      {/* Phones: count + Clear on one line, actions in a single sideways-scrolling row
+          (a wrapped bar would cover most of the table). sm+: one wrapping row. */}
+      <div className="sticky bottom-8 z-10 space-y-2 rounded-lg border border-border bg-card px-3 py-2.5 shadow-md sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:space-y-0 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2 text-sm">
           <span className="font-medium">{num(rows)} selected</span>
           {status ? <Badge variant="outline">{statusLabel(status)}</Badge> : null}
           {busy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+          <Button variant="ghost" size="sm" className="ml-auto sm:hidden" onClick={clear} disabled={busy}>
+            Clear
+          </Button>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
           {!status ? (
             <span className="text-sm text-muted-foreground">
               These orders are in different tabs — select orders from one tab to act on them.
@@ -264,6 +269,7 @@ export function OrderControlPanel({
                 <Button
                   key={a}
                   size="sm"
+                  className="shrink-0"
                   variant={PRIMARY.includes(a) ? "default" : DESTRUCTIVE.includes(a) ? "destructive" : "outline"}
                   onClick={() => onAction(a)}
                   disabled={busy}
@@ -274,7 +280,7 @@ export function OrderControlPanel({
               );
             })
           )}
-          <Button variant="ghost" size="sm" onClick={clear} disabled={busy}>
+          <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={clear} disabled={busy}>
             Clear
           </Button>
         </div>
