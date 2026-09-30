@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "./auth";
+import { shopifyQuery } from "./shopify-client";
 import {
   checkShopify,
   readIntegrations,
@@ -125,4 +126,64 @@ export async function disconnectShopifyAction(): Promise<IntegrationActionState>
   await writeIntegrations(config);
   revalidatePath("/dashboard/integrations");
   return { ok: true, message: "Shopify disconnected." };
+}
+
+const ORDERS_CREATE_WEBHOOK_PATH = "/api/webhooks/orders-create";
+
+/**
+ * Subscribe the store's `orders/create` webhook to this deployment's intake
+ * endpoint (order address check + tab routing). Shopify only delivers to a
+ * public HTTPS URL, so `baseUrl` must be the app's public origin — localhost
+ * won't work. Idempotent: an existing subscription to the same URL is reused.
+ */
+export async function registerOrderWebhookAction(
+  baseUrl: string,
+): Promise<IntegrationActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "Not signed in." };
+
+  let origin: string;
+  try {
+    const u = new URL(baseUrl.trim());
+    if (u.protocol !== "https:") throw new Error();
+    if (/^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(u.hostname)) {
+      return { ok: false, message: "Shopify can't reach localhost — use the app's public HTTPS address." };
+    }
+    origin = u.origin;
+  } catch {
+    return { ok: false, message: "Enter the app's public address, starting with https://." };
+  }
+
+  const config = await readIntegrations();
+  if (!config.shopify?.clientSecret) {
+    return {
+      ok: false,
+      message: "Webhooks are verified with the app's Client Secret — connect with client credentials first.",
+    };
+  }
+
+  const uri = `${origin}${ORDERS_CREATE_WEBHOOK_PATH}`;
+  const existing = await shopifyQuery<{ webhookSubscriptions: { nodes: { uri: string }[] } }>(
+    `{ webhookSubscriptions(first: 50, topics: [ORDERS_CREATE]) { nodes { id uri } } }`,
+  );
+  if (!existing.ok) return { ok: false, message: existing.error };
+  if (existing.data.webhookSubscriptions.nodes.some((n) => n.uri === uri)) {
+    return { ok: true, message: `Already subscribed — new orders are sent to ${uri}.` };
+  }
+
+  const res = await shopifyQuery<{
+    webhookSubscriptionCreate: { userErrors: { message: string }[] };
+  }>(
+    `mutation($uri: String!) {
+      webhookSubscriptionCreate(topic: ORDERS_CREATE, webhookSubscription: { uri: $uri }) {
+        webhookSubscription { id }
+        userErrors { field message }
+      }
+    }`,
+    { uri },
+  );
+  if (!res.ok) return { ok: false, message: res.error };
+  const errs = res.data.webhookSubscriptionCreate.userErrors;
+  if (errs.length) return { ok: false, message: errs.map((e) => e.message).join("; ") };
+  return { ok: true, message: `Subscribed — new orders are sent to ${uri}.` };
 }

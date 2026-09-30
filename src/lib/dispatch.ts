@@ -3,6 +3,8 @@ import { ObjectId } from "mongodb";
 import { getDb, isDbConfigured } from "./db";
 import { DB_UNAVAILABLE } from "./app-data";
 import type { Row } from "@/config/resource-types";
+import { findByConsignment } from "./order-ops";
+import { runOrderAction } from "./order-workflow";
 
 /**
  * Load sheets — the courier handover manifest for a batch of shipments moving
@@ -218,4 +220,65 @@ export async function deleteLoadSheet(
   } catch {
     return { error: DB_UNAVAILABLE };
   }
+}
+
+/**
+ * Build a posted dispatch load sheet from scanned label QR codes: each code is
+ * a consignment id, resolved to its order through `app_order_ops`. Every
+ * parcel must be In Pickup & Packing (label printed, not yet dispatched);
+ * totals and COD are summed server-side from the Create Package snapshot,
+ * never trusted from the client. Posting the sheet is the courier handover,
+ * so each order on it is then dispatched with the sheet's reference.
+ */
+export async function createScannedLoadSheet(input: {
+  courier?: unknown;
+  location?: unknown;
+  consignmentIds?: unknown;
+}): Promise<{ row?: Row; error?: string; dispatchErrors?: string[] }> {
+  const ids = Array.isArray(input.consignmentIds)
+    ? Array.from(new Set(input.consignmentIds.map((v) => str(v).trim()).filter(Boolean)))
+    : [];
+  if (ids.length === 0) return { error: "Scan at least one package." };
+
+  const parcels = [];
+  for (const id of ids) {
+    const { doc, error } = await findByConsignment(id);
+    if (error) return { error };
+    if (!doc) return { error: `No order has consignment ${id}.` };
+    if (doc.opsStatus !== "in_pickup_packing") {
+      return { error: `${doc.number || id} isn't ready for pickup (label not printed, or already dispatched).` };
+    }
+    parcels.push(doc);
+  }
+
+  const created = await createLoadSheet("dispatch", {
+    courier: input.courier,
+    location: input.location,
+    status: "posted",
+    reconciliation: "pending",
+    totalShipments: parcels.length,
+    totalAmount: parcels.reduce((n, p) => n + numOr0(p.total), 0),
+    codAmount: parcels.reduce((n, p) => n + numOr0(p.codAmount), 0),
+    weight: 0,
+    notes: "",
+  });
+  if (!created.row) return { error: created.error };
+
+  const reference = String(created.row.reference);
+  try {
+    const db = await getDb();
+    await db?.collection(COLLECTION.dispatch).updateOne(
+      { _id: new ObjectId(created.row.id) },
+      { $set: { consignmentIds: ids } },
+    );
+  } catch {
+    // The sheet exists either way; only the consignment list is missing.
+  }
+
+  const dispatchErrors: string[] = [];
+  for (const p of parcels) {
+    const res = await runOrderAction(p._id, "dispatch", { loadSheet: reference });
+    if (res.error) dispatchErrors.push(`${p.number || p.consignmentId}: ${res.error}`);
+  }
+  return { row: { ...created.row, consignmentIds: ids }, dispatchErrors };
 }

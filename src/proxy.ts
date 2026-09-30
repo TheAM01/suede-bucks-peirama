@@ -7,7 +7,8 @@ export async function proxy(req: NextRequest) {
   const session = await verifySession(token);
   const isAuthed = Boolean(session);
 
-  const isDashboard = pathname.startsWith("/dashboard");
+  // /print/* holds chrome-less printables (shipping labels) — same gate as the dashboard.
+  const isDashboard = pathname.startsWith("/dashboard") || pathname.startsWith("/print");
   const isLogin = pathname === "/login";
 
   // Gate the dashboard behind a valid session.
@@ -30,5 +31,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login"],
+  matcher: ["/dashboard/:path*", "/print/:path*", "/login"],
 };

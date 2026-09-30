@@ -506,6 +506,73 @@ const orders: ShopifyWriter = {
   },
 };
 
+// --- order workflow helpers (used by src/lib/order-workflow.ts) --------------------
+
+export interface OrderAddressInput {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  address1: string;
+  address2: string;
+  city: string;
+  zip: string;
+  /** passed through unchanged from the existing address — not editable here */
+  provinceCode?: string;
+  countryCode?: string;
+}
+
+/** Replace the order's shipping address (and optionally its note) in Shopify. */
+export async function updateOrderShipping(
+  id: string,
+  address: OrderAddressInput,
+  note?: string,
+): Promise<{ error?: string }> {
+  const shippingAddress: Record<string, unknown> = {
+    firstName: address.firstName,
+    lastName: address.lastName,
+    phone: address.phone,
+    address1: address.address1,
+    address2: address.address2,
+    city: address.city,
+    zip: address.zip,
+  };
+  if (address.provinceCode) shippingAddress.provinceCode = address.provinceCode;
+  if (address.countryCode) shippingAddress.countryCode = address.countryCode;
+  const input: Record<string, unknown> = { id: toGid("Order", id), shippingAddress };
+  if (note !== undefined) input.note = note;
+  const { error } = await mutate(
+    `mutation($input: OrderInput!) {
+      orderUpdate(input: $input) {
+        order { id }
+        userErrors { field message }
+      }
+    }`,
+    { input },
+    "orderUpdate",
+  );
+  return { error };
+}
+
+/** Add or remove Shopify tags on an order (e.g. `packaged`, so the packing team can filter in Shopify too). */
+export async function setOrderTags(
+  id: string,
+  tags: string[],
+  mode: "add" | "remove",
+): Promise<{ error?: string }> {
+  const field = mode === "add" ? "tagsAdd" : "tagsRemove";
+  const { error } = await mutate(
+    `mutation($id: ID!, $tags: [String!]!) {
+      ${field}(id: $id, tags: $tags) {
+        node { id }
+        userErrors { field message }
+      }
+    }`,
+    { id: toGid("Order", id), tags },
+    field,
+  );
+  return { error };
+}
+
 // --- registry -----------------------------------------------------------------------
 
 /**

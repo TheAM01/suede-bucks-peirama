@@ -136,7 +136,23 @@ function Cell({
 
 type SortState = { key: string; dir: "asc" | "desc" } | null;
 
-export function ResourceView({ resourceKey }: { resourceKey: string }) {
+/** What a custom selection bar gets: the selected rows and a way to clear the selection. */
+export interface SelectionContext {
+  rows: Row[];
+  clear: () => void;
+}
+
+export function ResourceView({
+  resourceKey,
+  toolbar,
+  selectionBar,
+}: {
+  resourceKey: string;
+  /** extra buttons rendered next to the tab strip (e.g. a scanner) */
+  toolbar?: React.ReactNode;
+  /** replaces the generic bulk bar (Move to / Delete) with a resource-specific control panel */
+  selectionBar?: (ctx: SelectionContext) => React.ReactNode;
+}) {
   const config = getResource(resourceKey);
   const router = useRouter();
   const store = useStore();
@@ -342,7 +358,7 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
 
       {/* Table card */}
       <Card>
-        <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-4">
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 font-heading text-base font-semibold leading-tight tracking-tight">
               {config.plural}
@@ -359,7 +375,8 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
               {source === "shopify" && readOnly ? " · view-only" : ""}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {toolbar}
             {config.tabs ? (
               <Segmented
                 size="sm"
@@ -560,8 +577,16 @@ export function ResourceView({ resourceKey }: { resourceKey: string }) {
         )}
       </Card>
 
+      {/* Resource-specific control panel, when the page provides one */}
+      {!readOnly && selected.size > 0 && selectionBar
+        ? selectionBar({
+            rows: rows.filter((r) => selected.has(r.id)),
+            clear: () => setSelected(new Set()),
+          })
+        : null}
+
       {/* Bulk action bar — sticky just above the bottom bar, shown once something's selected */}
-      {!readOnly && selected.size > 0 ? (
+      {!readOnly && selected.size > 0 && !selectionBar ? (
         <div className="sticky bottom-8 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
           <p className="text-sm font-medium">
             {selected.size} {selected.size === 1 ? "record" : "records"} selected

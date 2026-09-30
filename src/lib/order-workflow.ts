@@ -1,0 +1,272 @@
+import "server-only";
+import {
+  ACTION_FROM,
+  ACTION_LABEL,
+  COURIERS,
+  canRun,
+  statusLabel,
+  type OrderAction,
+} from "@/config/order-workflow";
+import { checkAddress, routeNewOrder } from "./address-check";
+import { applyTransition, getOrderOps, intakeOrder } from "./order-ops";
+import { readOrderBrief } from "./shopify-order-detail";
+import { setOrderTags, updateOrderShipping } from "./shopify-writes";
+import { bookConsignment } from "./courier-booking";
+
+/**
+ * The Orders workflow: every control-panel action (Modify, Move, Discard,
+ * Create Package, consignment booking, label printing, Dispatch, Cancel)
+ * runs through `runOrderAction()`, which checks the transition against the
+ * shared ACTION_FROM table, applies the Shopify side effect where there is
+ * one, then compare-and-sets the new status with a history entry
+ * (src/lib/order-ops.ts). Intake of brand-new orders is `intakeFromWebhook()`.
+ */
+
+export const MALFORMED_CONFIRMATION =
+  "This order was flagged as malformed. Are you sure you want to move it into active orders?";
+
+/** Tag added in Shopify on Create Package so the packing team can filter there too. */
+const PACKAGED_TAG = "packaged";
+
+export interface ActionResult {
+  ok?: boolean;
+  error?: string;
+  /** the action needs an explicit yes — resend with `confirmed: true` */
+  needsConfirmation?: string;
+  /** the status the order ended up in */
+  status?: string;
+}
+
+const str = (v: unknown): string => (v == null ? "" : String(v)).trim();
+
+function isAction(v: unknown): v is OrderAction {
+  return typeof v === "string" && v in ACTION_FROM;
+}
+
+export async function runOrderAction(
+  orderId: string,
+  action: unknown,
+  payload: Record<string, unknown>,
+): Promise<ActionResult> {
+  if (!isAction(action)) return { error: "Unknown order action." };
+
+  const { doc, error } = await getOrderOps(orderId);
+  if (error || !doc) return { error: error ?? "Couldn't load the order's status." };
+  const from = doc.opsStatus;
+
+  if (!canRun(action, from)) {
+    return {
+      error: `Can't ${ACTION_LABEL[action].toLowerCase()} an order that's in ${statusLabel(from)}.`,
+    };
+  }
+
+  const at = new Date().toISOString();
+  const move = async (
+    to: string,
+    set: Parameters<typeof applyTransition>[3] = {},
+    note?: string,
+    unset: Parameters<typeof applyTransition>[4] = [],
+  ): Promise<ActionResult> => {
+    const res = await applyTransition(
+      orderId,
+      from,
+      { at, action, from, to, ...(note ? { note } : {}) },
+      { ...set, opsStatus: to },
+      unset,
+    );
+    return res.error ? { error: res.error } : { ok: true, status: to };
+  };
+
+  switch (action) {
+    case "modify": {
+      const a = (payload.address ?? {}) as Record<string, unknown>;
+      const address = {
+        firstName: str(a.firstName),
+        lastName: str(a.lastName),
+        phone: str(a.phone),
+        address1: str(a.address1),
+        address2: str(a.address2),
+        city: str(a.city),
+        zip: str(a.zip),
+        provinceCode: str(a.provinceCode),
+        countryCode: str(a.countryCode),
+      };
+      if (!address.address1 || !address.city) {
+        return { error: "Street address and city are required." };
+      }
+      const note = payload.note === undefined ? undefined : String(payload.note);
+      const saved = await updateOrderShipping(orderId, address, note);
+      if (saved.error) return { error: `Shopify didn't save the change: ${saved.error}` };
+
+      const issues = checkAddress({
+        ...address,
+        name: `${address.firstName} ${address.lastName}`,
+        country: address.countryCode,
+      });
+      return move(
+        from,
+        { modified: true, flags: issues },
+        issues.length ? `Address edited — still flagged: ${issues.join(" ")}` : "Address edited — passes checks",
+      );
+    }
+
+    case "move_active": {
+      if (from === "exception" && !doc.modified && payload.confirmed !== true) {
+        return { needsConfirmation: MALFORMED_CONFIRMATION };
+      }
+      const note =
+        from === "pending_cc"
+          ? "Bank deposit cleared"
+          : doc.modified
+            ? "Moved after modification"
+            : "Moved without modification (confirmed)";
+      return move("active", {}, note);
+    }
+
+    case "move_exception":
+      return move("exception", { modified: false }, str(payload.reason) || undefined);
+
+    case "discard":
+      return move("canceled", {}, str(payload.reason) || "Discarded");
+
+    case "create_package": {
+      const brief = await readOrderBrief(orderId);
+      if (!brief.order) return { error: brief.error };
+      const tagged = await setOrderTags(orderId, [PACKAGED_TAG], "add");
+      if (tagged.error) return { error: `Couldn't tag the order in Shopify: ${tagged.error}` };
+      return move("packaged", {
+        number: brief.order.number,
+        total: brief.order.total,
+        codAmount: brief.order.outstanding,
+      });
+    }
+
+    case "unpackage": {
+      const untagged = await setOrderTags(orderId, [PACKAGED_TAG], "remove");
+      if (untagged.error) return { error: `Couldn't untag the order in Shopify: ${untagged.error}` };
+      return move("active");
+    }
+
+    case "assign_consignment": {
+      const courier = str(payload.courier);
+      const meta = COURIERS.find((c) => c.value === courier);
+      if (!meta) return { error: "Pick a courier." };
+
+      if (payload.useApi === true) {
+        if (!meta.api) return { error: `${courier} has no booking API — enter the consignment ID manually.` };
+        const brief = await readOrderBrief(orderId);
+        if (!brief.order) return { error: brief.error };
+        const booked = await bookConsignment(courier, brief.order);
+        if (!booked.consignmentId) {
+          const reason = booked.error ?? "Booking failed.";
+          if (from !== "booking_failed") {
+            await move("booking_failed", { courier, bookingError: reason }, reason);
+          }
+          return { error: reason, status: "booking_failed" };
+        }
+        return move(
+          "finalized",
+          { courier, consignmentId: booked.consignmentId },
+          `Booked with ${courier} via API — ${booked.consignmentId}`,
+          ["bookingError"],
+        );
+      }
+
+      const consignmentId = str(payload.consignmentId);
+      if (!/^[A-Za-z0-9-]{4,40}$/.test(consignmentId)) {
+        return { error: "Enter the consignment ID (4–40 letters, digits, or dashes)." };
+      }
+      return move(
+        "finalized",
+        { courier, consignmentId },
+        `Consignment ${consignmentId} assigned manually (${courier})`,
+        ["bookingError"],
+      );
+    }
+
+    case "print_label":
+      return from === "in_pickup_packing"
+        ? move(from, {}, "Shipping label reprinted")
+        : move("in_pickup_packing", { labelPrintedAt: at }, "Shipping label printed");
+
+    case "dispatch": {
+      const via = str(payload.via) || "button";
+      const loadSheet = str(payload.loadSheet);
+      return move(
+        "dispatched",
+        { dispatchedAt: at, ...(loadSheet ? { loadSheet } : {}) },
+        loadSheet ? `Dispatched on load sheet ${loadSheet}` : `Dispatched (${via})`,
+      );
+    }
+
+    case "cancel": {
+      const reason = str(payload.reason);
+      if (from === "in_pickup_packing") {
+        return move("finalized", {}, reason || "Pickup cancelled — back to Finalized", ["labelPrintedAt"]);
+      }
+      if (!reason) return { error: "A reason is required to cancel a finalized order." };
+      return move(
+        "canceled",
+        { cancelReason: reason },
+        `Cancelled: ${reason}${doc.consignmentId ? ` (consignment ${doc.consignmentId} released)` : ""}`,
+        ["consignmentId"],
+      );
+    }
+  }
+}
+
+/** The subset of Shopify's REST-format `orders/create` webhook payload intake reads. */
+interface OrderWebhookPayload {
+  id?: number | string;
+  name?: string;
+  phone?: string;
+  source_name?: string;
+  payment_gateway_names?: string[];
+  customer?: { phone?: string };
+  shipping_address?: {
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    address1?: string;
+    address2?: string;
+    city?: string;
+    zip?: string;
+    country?: string;
+    country_code?: string;
+    phone?: string;
+  } | null;
+}
+
+/** orders/create: check the address, pick the starting tab, record it. Idempotent. */
+export async function intakeFromWebhook(p: OrderWebhookPayload): Promise<{ error?: string }> {
+  if (!p.id) return { error: "Payload has no order id." };
+  // Point-of-sale orders are handed over at the till — nothing to ship.
+  if (p.source_name === "pos") return {};
+  const a = p.shipping_address;
+  const issues = checkAddress(
+    a
+      ? {
+          name: a.name || [a.first_name, a.last_name].filter(Boolean).join(" "),
+          address1: a.address1,
+          address2: a.address2,
+          city: a.city,
+          zip: a.zip,
+          country: a.country_code || a.country,
+          phone: a.phone || p.phone || p.customer?.phone,
+        }
+      : null,
+  );
+  const status = routeNewOrder(issues, p.payment_gateway_names ?? []);
+  const note =
+    status === "exception"
+      ? `Flagged on intake: ${issues.join(" ")}`
+      : status === "pending_cc"
+        ? "Awaiting bank deposit clearance"
+        : "Passed intake checks";
+  return intakeOrder(String(p.id), {
+    opsStatus: status,
+    number: p.name ?? "",
+    flags: issues,
+    note,
+  });
+}

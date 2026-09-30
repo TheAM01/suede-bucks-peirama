@@ -44,7 +44,9 @@ export type TimelineKind =
   | "delivery"
   | "refund"
   | "cancelled"
-  | "event";
+  | "event"
+  /** this app's own workflow step (Orders tab moves, packaging, dispatch) */
+  | "ops";
 
 export interface TimelineEntry {
   id: string;
@@ -102,6 +104,20 @@ export interface OrderRefund {
   amount: number;
 }
 
+export interface ShippingAddressFields {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  address1: string;
+  address2: string;
+  city: string;
+  province: string;
+  provinceCode: string;
+  zip: string;
+  country: string;
+  countryCode: string;
+}
+
 export interface OrderDetail {
   id: string;
   number: string;
@@ -117,6 +133,8 @@ export interface OrderDetail {
   fulfillment: string;
   customer: { name: string; email: string; phone: string };
   shippingAddress: string;
+  /** the structured address, for the Modify form and the address check */
+  shippingAddressFields: ShippingAddressFields | null;
   totals: {
     subtotal: number;
     shipping: number;
@@ -155,7 +173,7 @@ const ORDER_DETAIL_QUERY = `query OrderDetail($id: ID!) {
     sourceName note tags email phone
     displayFinancialStatus displayFulfillmentStatus
     customer { displayName email phone }
-    shippingAddress { name address1 address2 city province zip country }
+    shippingAddress { name firstName lastName phone address1 address2 city province provinceCode zip country countryCodeV2 }
     subtotalPriceSet { shopMoney { amount } }
     totalShippingPriceSet { shopMoney { amount } }
     totalTaxSet { shopMoney { amount } }
@@ -201,6 +219,23 @@ function formatAddress(a: unknown): string {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function addressFields(a: unknown): ShippingAddressFields | null {
+  if (!a || typeof a !== "object") return null;
+  return {
+    firstName: str(get(a, "firstName")),
+    lastName: str(get(a, "lastName")),
+    phone: str(get(a, "phone")),
+    address1: str(get(a, "address1")),
+    address2: str(get(a, "address2")),
+    city: str(get(a, "city")),
+    province: str(get(a, "province")),
+    provinceCode: str(get(a, "provinceCode")),
+    zip: str(get(a, "zip")),
+    country: str(get(a, "country")),
+    countryCode: str(get(a, "countryCodeV2")),
+  };
 }
 
 const titleCaseWords = (v: string): string =>
@@ -395,6 +430,7 @@ export async function readOrderDetail(
       phone: str(get(o, "customer", "phone")) || str(o.phone),
     },
     shippingAddress: formatAddress(o.shippingAddress),
+    shippingAddressFields: addressFields(o.shippingAddress),
     totals: {
       subtotal: money(o, "subtotalPriceSet"),
       shipping: money(o, "totalShippingPriceSet"),
@@ -410,4 +446,55 @@ export async function readOrderDetail(
   };
 
   return { order };
+}
+
+// --- brief read for workflow actions -------------------------------------------
+
+export interface OrderBrief {
+  id: string;
+  number: string;
+  customer: string;
+  gateways: string[];
+  total: number;
+  /** what's still unpaid — the amount a courier collects on delivery */
+  outstanding: number;
+  address: ShippingAddressFields | null;
+}
+
+const ORDER_BRIEF_QUERY = `query OrderBrief($id: ID!) {
+  order(id: $id) {
+    id name paymentGatewayNames phone
+    customer { displayName phone }
+    totalPriceSet { shopMoney { amount } }
+    totalOutstandingSet { shopMoney { amount } }
+    shippingAddress { name firstName lastName phone address1 address2 city province provinceCode zip country countryCodeV2 }
+  }
+}`;
+
+/** Just what the order workflow needs (number, money, address) — far cheaper than readOrderDetail(). */
+export async function readOrderBrief(
+  id: string,
+): Promise<{ order?: OrderBrief; error?: string }> {
+  const res = await shopifyQuery<{ order: Record<string, unknown> | null }>(
+    ORDER_BRIEF_QUERY,
+    { id: toGid("Order", id) },
+  );
+  if (!res.ok) return { error: res.error };
+  const o = res.data?.order;
+  if (!o) return { error: "That order no longer exists in Shopify." };
+  const address = addressFields(o.shippingAddress);
+  if (address && !address.phone) {
+    address.phone = str(o.phone) || str(get(o, "customer", "phone"));
+  }
+  return {
+    order: {
+      id: fromGid(o.id),
+      number: str(o.name),
+      customer: str(get(o, "customer", "displayName")) || str(get(o, "shippingAddress", "name")) || "Guest",
+      gateways: Array.isArray(o.paymentGatewayNames) ? o.paymentGatewayNames.map(str) : [],
+      total: money(o, "totalPriceSet"),
+      outstanding: money(o, "totalOutstandingSet"),
+      address,
+    },
+  };
 }

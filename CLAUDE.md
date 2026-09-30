@@ -23,6 +23,12 @@ npm run lint     # ESLint (eslint.config.mjs)
 
 There is no test suite/runner configured in this repo.
 
+Required env vars for `npm run dev` (`.env.local`): `ADMIN_USERNAME`, `ADMIN_PASSWORD`,
+`SESSION_SECRET` (random string for the session HMAC). `MONGODB_URI` is optional — without it,
+app-owned resources (registers, pos-staff, segments) read as empty instead of erroring. Shopify
+connectivity is **not** env-configured: it's set up at runtime via the in-app Dashboard →
+Integrations page (OAuth client credentials), not env vars.
+
 ## Architecture
 
 ### Auth

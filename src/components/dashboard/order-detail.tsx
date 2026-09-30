@@ -16,7 +16,11 @@ import {
   MapPin,
   User,
   RefreshCw,
+  Clock,
+  Printer,
 } from "@/components/icons";
+import type { OrderOpsDoc } from "@/lib/order-ops";
+import { ORDER_STATUS_OPTIONS, statusLabel } from "@/config/order-workflow";
 import type {
   OrderDetail,
   TimelineEntry,
@@ -65,7 +69,38 @@ const STEP_STYLE: Record<TimelineKind, { icon: IconType; className: string }> = 
   refund: { icon: RotateCcw, className: "border-warning/30 bg-warning/10 text-warning" },
   cancelled: { icon: X, className: "border-destructive/30 bg-destructive/10 text-destructive" },
   event: { icon: Info, className: "border-border bg-muted text-muted-foreground" },
+  ops: { icon: Clock, className: "border-primary/30 bg-primary/10 text-primary" },
 };
+
+const OPS_ACTION_TITLE: Record<string, string> = {
+  intake: "Received by order intake",
+  set_status: "Status changed",
+  modify: "Order modified",
+  move_active: "Moved to Active",
+  move_exception: "Moved to Exceptions",
+  discard: "Discarded",
+  create_package: "Package created",
+  unpackage: "Package undone — back to Active",
+  assign_consignment: "Consignment assigned",
+  print_label: "Shipping label printed",
+  dispatch: "Dispatched",
+  cancel: "Cancelled",
+};
+
+/** The app's own workflow history, as timeline steps to merge with Shopify's. */
+function opsTimeline(ops: OrderOpsDoc | null): TimelineEntry[] {
+  return (ops?.history ?? []).map((h, i) => {
+    const move = h.from && h.to && h.from !== h.to ? `${statusLabel(h.from)} → ${statusLabel(h.to)}` : "";
+    const intoTab = !h.from && h.to ? `Filed under ${statusLabel(h.to)}` : "";
+    return {
+      id: `ops-${i}`,
+      kind: "ops" as const,
+      title: OPS_ACTION_TITLE[h.action] ?? h.action,
+      detail: [move || intoTab, h.note].filter(Boolean).join(" · ") || undefined,
+      at: h.at,
+    };
+  });
+}
 
 function Timeline({ entries }: { entries: TimelineEntry[] }) {
   if (entries.length === 0) {
@@ -169,6 +204,7 @@ function SummaryRow({
 
 export function OrderDetailView({ orderId }: { orderId: string }) {
   const [order, setOrder] = React.useState<OrderDetail | null>(null);
+  const [ops, setOps] = React.useState<OrderOpsDoc | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -180,7 +216,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
       try {
         const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
         const body = (await res.json().catch(() => null)) as
-          | { order?: OrderDetail; error?: string }
+          | { order?: OrderDetail; ops?: OrderOpsDoc | null; error?: string }
           | null;
         if (isStale()) return;
         if (!res.ok || !body?.order) {
@@ -188,6 +224,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
           setOrder(null);
         } else {
           setOrder(body.order);
+          setOps(body.ops ?? null);
           setError(null);
         }
       } catch {
@@ -291,7 +328,11 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
               <CardTitle>Timeline</CardTitle>
             </CardHeader>
             <CardContent>
-              <Timeline entries={order.timeline} />
+              <Timeline
+                entries={[...order.timeline, ...opsTimeline(ops)].sort(
+                  (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+                )}
+              />
             </CardContent>
           </Card>
 
@@ -420,6 +461,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
 
         {/* Side column */}
         <div className="space-y-6">
+          {ops ? <WorkflowCard orderId={order.id} ops={ops} /> : null}
           <Card>
             <CardHeader>
               <CardTitle>Summary</CardTitle>
@@ -534,5 +576,77 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** The order's place in this app's own workflow — tab, address flags, consignment. */
+function WorkflowCard({ orderId, ops }: { orderId: string; ops: OrderOpsDoc }) {
+  const variant = ORDER_STATUS_OPTIONS.find((o) => o.value === ops.opsStatus)?.variant ?? "outline";
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-2">
+          Workflow
+          <Badge variant={variant}>{statusLabel(ops.opsStatus)}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {ops.flags?.length ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5">
+            <p className="font-medium text-destructive">
+              Address flags{ops.modified ? " (after last edit)" : ""}
+            </p>
+            <ul className="mt-1 list-disc pl-5">
+              {ops.flags.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+          {ops.courier ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Courier</dt>
+              <dd>{ops.courier}</dd>
+            </div>
+          ) : null}
+          {ops.consignmentId ? (
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">Consignment</dt>
+              <dd className="truncate font-mono text-[13px]">{ops.consignmentId}</dd>
+            </div>
+          ) : null}
+          {ops.codAmount !== undefined ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">COD</dt>
+              <dd className="tabular-nums">{ops.codAmount ? formatCurrency(ops.codAmount) : "Prepaid"}</dd>
+            </div>
+          ) : null}
+          {ops.loadSheet ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Load sheet</dt>
+              <dd className="font-mono text-[13px]">{ops.loadSheet}</dd>
+            </div>
+          ) : null}
+        </dl>
+        {ops.bookingError ? <p className="text-destructive">{ops.bookingError}</p> : null}
+        {ops.cancelReason ? (
+          <p>
+            <span className="text-muted-foreground">Cancel reason:</span> {ops.cancelReason}
+          </p>
+        ) : null}
+        {ops.consignmentId ? (
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/print/labels?ids=${orderId}`} target="_blank" rel="noreferrer">
+              <Printer />
+              View shipping label
+            </a>
+          </Button>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          Move orders between stages from the control panel on the Orders list.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

@@ -105,4 +105,7 @@ export {
   SunIcon as Sun,
   DocumentCheckIcon as Invoice,
   ArrowUturnDownIcon as PackageReturn,
+  QrCodeIcon as QrCode,
+  PrinterIcon as Printer,
+  ClockIcon as Clock,
 } from "@heroicons/react/24/outline";

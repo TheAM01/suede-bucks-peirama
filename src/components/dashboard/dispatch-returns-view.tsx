@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Segmented } from "@/components/ui/segmented";
 import { ResourceView } from "./resource-view";
+import { ScanLoadSheetButton } from "./scanners";
 
 type SubTab = "dispatch" | "returns";
 
@@ -34,7 +35,11 @@ export function DispatchReturnsView({ initialTab }: { initialTab: SubTab }) {
           { value: "returns", label: "Returns" },
         ]}
       />
-      <ResourceView key={tab} resourceKey={tab} />
+      <ResourceView
+        key={tab}
+        resourceKey={tab}
+        toolbar={tab === "dispatch" ? <ScanLoadSheetButton /> : undefined}
+      />
     </div>
   );
 }

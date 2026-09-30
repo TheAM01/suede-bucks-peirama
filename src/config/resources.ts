@@ -1,3 +1,4 @@
+import { ORDER_STATUS_OPTIONS } from "./order-workflow";
 import {
   Users,
   UserCheck,
@@ -61,7 +62,7 @@ const ACTIVE_STATUS = [
 
 // Shared by dispatch and returns — both hand a parcel to the same courier
 // roster, moving between the same physical locations.
-const COURIER_OPTIONS = [
+export const COURIER_OPTIONS = [
   { value: "Leopards Courier", label: "Leopards Courier" },
   { value: "TCS", label: "TCS" },
   { value: "M&P", label: "M&P" },
@@ -70,10 +71,12 @@ const COURIER_OPTIONS = [
   { value: "Call Courier", label: "Call Courier" },
   { value: "DHL", label: "DHL" },
   { value: "FedEx", label: "FedEx" },
+  { value: "Insta", label: "Insta" },
+  { value: "Manual (Karachi)", label: "Manual (Karachi)" },
   { value: "Other", label: "Other" },
 ];
 
-const LOCATION_OPTIONS = [
+export const LOCATION_OPTIONS = [
   { value: "Main Warehouse", label: "Main Warehouse" },
   { value: "Flagship Store", label: "Flagship Store" },
   { value: "Airport Popup", label: "Airport Popup" },
@@ -82,22 +85,9 @@ const LOCATION_OPTIONS = [
 
 // The Orders operational-status lifecycle — independent of Shopify's own
 // payment/fulfillment fields, see src/lib/order-ops.ts. Shared between the
-// field's dropdown options and the tab bar so they can't drift apart.
-const ORDER_OPS_OPTIONS = [
-  { value: "draft", label: "Draft", variant: "outline" as const },
-  { value: "active", label: "Active", variant: "info" as const },
-  { value: "finalized", label: "Finalized", variant: "secondary" as const },
-  { value: "packaged", label: "Packaged", variant: "primary" as const },
-  { value: "fulfilled", label: "Fulfilled", variant: "success" as const },
-  { value: "delivered", label: "Delivered", variant: "solid" as const },
-  { value: "returned", label: "Returned", variant: "warning" as const },
-  { value: "canceled", label: "Canceled", variant: "destructive" as const },
-  { value: "pending_cc", label: "Pending CC", variant: "warning" as const },
-  { value: "duplicate", label: "Duplicate", variant: "secondary" as const },
-  { value: "exception", label: "Exception", variant: "destructive" as const },
-  { value: "booking_failed", label: "Booking Failed", variant: "destructive" as const },
-  { value: "on_hold", label: "On Hold", variant: "warning" as const },
-];
+// field's dropdown options and the tab bar so they can't drift apart; defined
+// with the workflow rules in src/config/order-workflow.ts.
+const ORDER_OPS_OPTIONS = ORDER_STATUS_OPTIONS;
 
 export const RESOURCES: Record<string, ResourceConfig> = {
   // ==========================================================================
@@ -538,7 +528,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     icon: ShoppingCart,
     subtitle: "Incoming and fulfilled orders",
     guide: "orders",
-    searchKeys: ["number", "customer"],
+    searchKeys: ["number", "customer", "consignmentId"],
     rowHref: (r) => `/dashboard/orders/${r.id}`,
     tabs: { field: "opsStatus", options: ORDER_OPS_OPTIONS },
     columns: [
@@ -546,6 +536,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       { key: "opsStatus", header: "Status", type: "status" },
       { key: "city", header: "City", type: "muted" },
       { key: "courier", header: "Courier", type: "text" },
+      { key: "consignmentId", header: "Consignment", type: "mono" },
       { key: "payment", header: "Payment", type: "status" },
       { key: "fulfillment", header: "Fulfillment", type: "status" },
       { key: "channel", header: "Channel", type: "status" },
@@ -676,6 +667,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       { key: "_row", header: "#", type: "index" },
       { key: "reference", header: "Reference/ID", type: "mono" },
       { key: "courier", header: "Courier", type: "text" },
+      { key: "consignmentIds", header: "Consignments", type: "tags" },
       { key: "location", header: "Location", type: "muted" },
       { key: "status", header: "Status", type: "status" },
       { key: "reconciliation", header: "Reconciliation", type: "status" },

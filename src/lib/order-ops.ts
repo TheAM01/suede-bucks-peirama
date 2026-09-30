@@ -3,13 +3,18 @@ import { getDb, isDbConfigured } from "./db";
 import type { Row } from "@/config/resource-types";
 
 /**
- * Order operational status — the tab bar on the Orders page (Draft, Active,
- * Finalized, Packaged, Fulfilled, Delivered, Returned, Canceled, Pending CC,
- * Duplicate, Exception, Booking Failed, On Hold). Shopify has no equivalent
- * field, so this is a thin app-owned overlay keyed by Shopify order id — one
- * document per order that has ever had its status touched, stored in
- * `app_order_ops` with the Shopify order id as `_id` for a trivial upsert.
- * An order with no document is `active` by default.
+ * Order operational status — the tab bar on the Orders page (Exception,
+ * Pending CC, Active, Packaged, Finalized, In Pickup & Packing, Dispatched,
+ * ...). Shopify has no equivalent field, so this is a thin app-owned overlay
+ * keyed by Shopify order id — one document per order that has ever had its
+ * status touched, stored in `app_order_ops` with the Shopify order id as
+ * `_id` for a trivial upsert. An order with no document is `active` by default.
+ *
+ * The same document carries the rest of the order workflow's state (see
+ * src/lib/order-workflow.ts): address flags from intake, whether staff have
+ * modified it since, the courier consignment, the COD amount snapshot, and an
+ * append-only `history` of every transition. Deliberately no customer PII —
+ * names/addresses stay in Shopify and are read live (see shopify-webhooks.ts).
  */
 
 const COLLECTION = "app_order_ops";
@@ -19,6 +24,8 @@ export const ORDER_OPS_STATUSES = [
   "active",
   "finalized",
   "packaged",
+  "in_pickup_packing",
+  "dispatched",
   "fulfilled",
   "delivered",
   "returned",
@@ -31,57 +38,226 @@ export const ORDER_OPS_STATUSES = [
 ] as const;
 export type OrderOpsStatus = (typeof ORDER_OPS_STATUSES)[number];
 
-const DEFAULT_STATUS: OrderOpsStatus = "active";
+export const DEFAULT_STATUS: OrderOpsStatus = "active";
+
+export const DB_MISSING = "No database configured — connect MongoDB to save order status.";
+export const DB_DOWN = "MongoDB is not reachable — order status wasn't saved.";
 
 function isValidStatus(v: unknown): v is OrderOpsStatus {
   return typeof v === "string" && (ORDER_OPS_STATUSES as readonly string[]).includes(v);
 }
 
-type Doc = { _id: string; opsStatus: string };
+export interface OpsHistoryEntry {
+  at: string;
+  action: string;
+  from?: string;
+  to?: string;
+  note?: string;
+}
 
-/** Merge each row's stored `opsStatus` in, defaulting to "active" — never fails the caller, degrades to the default on any DB problem. */
-export async function attachOrderOps(rows: Row[]): Promise<Row[]> {
-  if (rows.length === 0 || !isDbConfigured()) {
-    return rows.map((r) => ({ ...r, opsStatus: DEFAULT_STATUS }));
-  }
+export interface OrderOpsDoc {
+  _id: string;
+  opsStatus: string;
+  number?: string;
+  /** address problems found by the most recent check */
+  flags?: string[];
+  /** staff have edited the order since it last entered Exception */
+  modified?: boolean;
+  courier?: string;
+  consignmentId?: string;
+  bookingError?: string;
+  /** amount the courier collects on delivery — snapshot taken at Create Package */
+  codAmount?: number;
+  total?: number;
+  labelPrintedAt?: string;
+  dispatchedAt?: string;
+  loadSheet?: string;
+  cancelReason?: string;
+  history?: OpsHistoryEntry[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+let indexesReady = false;
+
+async function collection() {
+  if (!isDbConfigured()) return { error: DB_MISSING } as const;
   try {
     const db = await getDb();
-    if (!db) return rows.map((r) => ({ ...r, opsStatus: DEFAULT_STATUS }));
-    const ids = rows.map((r) => String(r.id));
-    const docs = await db
-      .collection<Doc>(COLLECTION)
-      .find({ _id: { $in: ids } })
-      .toArray();
-    const byId = new Map(docs.map((d) => [d._id, d.opsStatus]));
-    return rows.map((r) => ({
-      ...r,
-      opsStatus: byId.get(String(r.id)) ?? DEFAULT_STATUS,
-    }));
+    if (!db) return { error: DB_DOWN } as const;
+    const col = db.collection<OrderOpsDoc>(COLLECTION);
+    if (!indexesReady) {
+      // A consignment id identifies exactly one parcel — scanning resolves through it.
+      await col.createIndex(
+        { consignmentId: 1 },
+        { unique: true, partialFilterExpression: { consignmentId: { $type: "string" } } },
+      );
+      indexesReady = true;
+    }
+    return { col } as const;
   } catch {
-    return rows.map((r) => ({ ...r, opsStatus: DEFAULT_STATUS }));
+    return { error: DB_DOWN } as const;
   }
 }
 
-/** Upsert one order's operational status. A no-op (not an error) if the patch didn't touch `opsStatus`. */
+/** Merge each row's stored workflow state in, defaulting to "active" — never fails the caller, degrades to the default on any DB problem. */
+export async function attachOrderOps(rows: Row[]): Promise<Row[]> {
+  const withDefault = () => rows.map((r) => ({ ...r, opsStatus: DEFAULT_STATUS }));
+  if (rows.length === 0 || !isDbConfigured()) return withDefault();
+  const c = await collection();
+  if ("error" in c) return withDefault();
+  try {
+    const ids = rows.map((r) => String(r.id));
+    const docs = await c.col.find({ _id: { $in: ids } }).toArray();
+    const byId = new Map(docs.map((d) => [d._id, d]));
+    return rows.map((r) => {
+      const d = byId.get(String(r.id));
+      return {
+        ...r,
+        opsStatus: d?.opsStatus ?? DEFAULT_STATUS,
+        consignmentId: d?.consignmentId,
+        // The booked courier wins over Shopify's fulfillment tracking company.
+        courier: d?.courier || r.courier,
+        flags: d?.flags ?? [],
+        modified: d?.modified ?? false,
+      };
+    });
+  } catch {
+    return withDefault();
+  }
+}
+
+/** The order's workflow document, or a synthetic default one if it has never been touched. */
+export async function getOrderOps(
+  orderId: string,
+): Promise<{ doc?: OrderOpsDoc; error?: string }> {
+  const c = await collection();
+  if ("error" in c) return { error: c.error };
+  try {
+    const doc = await c.col.findOne({ _id: orderId });
+    return { doc: doc ?? { _id: orderId, opsStatus: DEFAULT_STATUS, history: [] } };
+  } catch {
+    return { error: DB_DOWN };
+  }
+}
+
+export async function findByConsignment(
+  consignmentId: string,
+): Promise<{ doc?: OrderOpsDoc | null; error?: string }> {
+  const c = await collection();
+  if ("error" in c) return { error: c.error };
+  try {
+    return { doc: await c.col.findOne({ consignmentId }) };
+  } catch {
+    return { error: DB_DOWN };
+  }
+}
+
+/**
+ * First sighting of an order (orders/create webhook). Only ever inserts —
+ * a redelivered webhook, or an order staff already moved, is left untouched.
+ */
+export async function intakeOrder(
+  orderId: string,
+  fields: { opsStatus: string; number: string; flags: string[]; note: string },
+): Promise<{ error?: string }> {
+  const c = await collection();
+  if ("error" in c) return { error: c.error };
+  const now = new Date().toISOString();
+  try {
+    await c.col.updateOne(
+      { _id: orderId },
+      {
+        $setOnInsert: {
+          opsStatus: fields.opsStatus,
+          number: fields.number,
+          flags: fields.flags,
+          modified: false,
+          createdAt: now,
+          updatedAt: now,
+          history: [{ at: now, action: "intake", to: fields.opsStatus, note: fields.note }],
+        },
+      },
+      { upsert: true },
+    );
+    return {};
+  } catch {
+    return { error: DB_DOWN };
+  }
+}
+
+/**
+ * Compare-and-set a workflow transition: only applies if the order is still
+ * in `from` (so two people acting on the same order can't both win). An order
+ * with no document counts as "active" — the upsert creates it; if a document
+ * exists in a different status the upsert's insert collides on `_id` and
+ * that's reported as a conflict, not a crash.
+ */
+export async function applyTransition(
+  orderId: string,
+  from: string,
+  entry: OpsHistoryEntry,
+  set: Partial<Omit<OrderOpsDoc, "_id" | "history">>,
+  unset: (keyof OrderOpsDoc)[] = [],
+): Promise<{ error?: string }> {
+  const c = await collection();
+  if ("error" in c) return { error: c.error };
+  const now = entry.at;
+  const update: Record<string, unknown> = {
+    $set: { ...set, updatedAt: now },
+    $push: { history: entry },
+    $setOnInsert: { createdAt: now },
+  };
+  if (unset.length) update.$unset = Object.fromEntries(unset.map((k) => [k, ""]));
+  try {
+    const res = await c.col.updateOne(
+      { _id: orderId, opsStatus: from },
+      update,
+      { upsert: from === DEFAULT_STATUS },
+    );
+    if (res.matchedCount === 0 && res.upsertedCount === 0) {
+      return { error: "This order's status changed in the meantime — refresh and try again." };
+    }
+    return {};
+  } catch (err) {
+    const code = (err as { code?: number }).code;
+    if (code === 11000) {
+      const dupConsignment = String((err as { message?: string }).message).includes("consignmentId");
+      return {
+        error: dupConsignment
+          ? "That consignment ID is already assigned to another order."
+          : "This order's status changed in the meantime — refresh and try again.",
+      };
+    }
+    return { error: DB_DOWN };
+  }
+}
+
+/** Direct status override (the order drawer's status field). A no-op (not an error) if the patch didn't touch `opsStatus`. */
 export async function setOrderOps(
   orderId: string,
   status: unknown,
 ): Promise<{ error?: string }> {
   if (status === undefined) return {};
   if (!isValidStatus(status)) return { error: "That isn't a valid order status." };
-  if (!isDbConfigured()) {
-    return { error: "No database configured — connect MongoDB to save order status." };
-  }
+  const c = await collection();
+  if ("error" in c) return { error: c.error };
+  const now = new Date().toISOString();
   try {
-    const db = await getDb();
-    if (!db) return { error: "MongoDB is not reachable — order status wasn't saved." };
-    await db.collection<Doc>(COLLECTION).updateOne(
+    const before = await c.col.findOne({ _id: orderId });
+    const from = before?.opsStatus ?? DEFAULT_STATUS;
+    if (from === status) return {};
+    await c.col.updateOne(
       { _id: orderId },
-      { $set: { opsStatus: status, updatedAt: new Date().toISOString() } },
+      {
+        $set: { opsStatus: status, updatedAt: now },
+        $push: { history: { at: now, action: "set_status", from, to: status } },
+        $setOnInsert: { createdAt: now },
+      },
       { upsert: true },
     );
     return {};
   } catch {
-    return { error: "MongoDB is not reachable — order status wasn't saved." };
+    return { error: DB_DOWN };
   }
 }

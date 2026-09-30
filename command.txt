@@ -1,0 +1,18 @@
+
+
+Whenever an order is placed, check the address for weird behaviour, as in malformation, very small length, other commonly known issues, etc.
+If there is an issue, place it in the exceptions tab.
+
+Orders with:
+
+Exception: Can be modified (especially their address), discarded, and after modification, moved to active.
+If moving without modification, prompt confirmation with modal ("This order was flagged as malformed. Are you sure you want to move it into active orders?")
+
+Active: Active order is basically regular order, ready to be processed.
+It can be moved to exception, It can be modified (only save on modal confirmation).
+Discarded, or moved to packaged which is done by creating "Create Package" button.
+
+Packaged:
+
+
+All these "can bes" are done through the control panel on the bottom of the screen when clicking an order.

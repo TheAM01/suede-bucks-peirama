@@ -2,10 +2,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { readIntegrations } from "@/lib/integrations";
 import { readOrderDetail } from "@/lib/shopify-order-detail";
+import { getOrderOps } from "@/lib/order-ops";
 
 export const dynamic = "force-dynamic";
 
-/** Single-order detail — line items, fulfillments, payments, and timeline. */
+/**
+ * Single-order detail — line items, fulfillments, payments, and timeline from
+ * Shopify, plus the app's own workflow document (`ops`: status, address flags,
+ * consignment, history). `ops` is null when the database isn't reachable —
+ * the Shopify half still renders.
+ */
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -24,9 +30,9 @@ export async function GET(
     );
   }
 
-  const { order, error } = await readOrderDetail(id);
+  const [{ order, error }, ops] = await Promise.all([readOrderDetail(id), getOrderOps(id)]);
   if (error || !order) {
     return NextResponse.json({ error: error ?? "Order not found." }, { status: 502 });
   }
-  return NextResponse.json({ order });
+  return NextResponse.json({ order, ops: ops.doc ?? null });
 }

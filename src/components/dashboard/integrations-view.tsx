@@ -24,6 +24,7 @@ import {
   connectShopifyAction,
   disconnectShopifyAction,
   testShopifyAction,
+  registerOrderWebhookAction,
   type IntegrationActionState,
 } from "@/lib/integration-actions";
 import {
@@ -59,6 +60,55 @@ function StatusBanner({ state }: { state: IntegrationActionState }) {
         <AlertCircle className="size-4 shrink-0" />
       )}
       <span>{state.message}</span>
+    </div>
+  );
+}
+
+/** Registers the orders/create webhook that drives order intake (address check + tab routing). */
+function OrderWebhookPanel() {
+  const [url, setUrl] = React.useState("");
+  const [state, setState] = React.useState<IntegrationActionState>({});
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    // Prefill with wherever the dashboard is being served from — right in production, wrong on localhost.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUrl(window.location.origin);
+  }, []);
+
+  async function register() {
+    setBusy(true);
+    setState({});
+    try {
+      setState(await registerOrderWebhookAction(url));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-4">
+      <div>
+        <p className="text-sm font-medium">Order intake webhook</p>
+        <p className="text-sm text-muted-foreground">
+          Sends every new order here the moment it&apos;s placed, so its shipping address is
+          checked and it lands in the right Orders tab (Exception, Pending CC, or Active).
+          Needs this app&apos;s public HTTPS address — Shopify can&apos;t reach localhost.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://your-app.example.com"
+          aria-label="Public app address"
+        />
+        <Button variant="outline" onClick={register} disabled={busy || !url}>
+          {busy ? <Loader2 className="animate-spin" /> : <Plug />}
+          Register webhook
+        </Button>
+      </div>
+      <StatusBanner state={state} />
     </div>
   );
 }
@@ -265,6 +315,8 @@ export function IntegrationsView({
               <StatusBanner state={testState} />
             </div>
           ) : null}
+
+          {connected ? <OrderWebhookPanel /> : null}
 
           {showForm ? (
             <form action={connectAction} className="space-y-4">
