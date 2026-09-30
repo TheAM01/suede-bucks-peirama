@@ -369,3 +369,20 @@ export async function postLoadSheet(sheetId: string): Promise<{ row?: Row; error
     return { error: DB_UNAVAILABLE };
   }
 }
+
+/** One load sheet by id, as a row. */
+export async function getLoadSheet(
+  resource: LoadSheetResource,
+  id: string,
+): Promise<{ row?: Row; error?: string }> {
+  if (!ObjectId.isValid(id)) return { error: "That load sheet doesn't exist." };
+  if (!isDbConfigured()) return { error: `No database configured — connect MongoDB to store ${NOUN[resource]}.` };
+  try {
+    const db = await getDb();
+    if (!db) return { error: DB_UNAVAILABLE };
+    const doc = await db.collection<Doc>(COLLECTION[resource]).findOne({ _id: new ObjectId(id) });
+    return doc ? { row: toRow(doc) } : { error: "That load sheet doesn't exist." };
+  } catch {
+    return { error: DB_UNAVAILABLE };
+  }
+}

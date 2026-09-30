@@ -498,3 +498,51 @@ export async function readOrderBrief(
     },
   };
 }
+
+// --- batched summaries (load sheet manifests) ---------------------------------------
+
+export interface OrderSummary {
+  id: string;
+  customer: string;
+  city: string;
+  phone: string;
+}
+
+/**
+ * Name / city / phone for many orders in one `nodes(ids:)` query per 100 —
+ * a manifest shouldn't cost one Shopify call per parcel. Missing orders are
+ * simply absent from the map.
+ */
+export async function readOrderSummaries(
+  ids: string[],
+): Promise<{ byId: Map<string, OrderSummary>; error?: string }> {
+  const byId = new Map<string, OrderSummary>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100).map((id) => toGid("Order", id));
+    const res = await shopifyQuery<{ nodes: (Record<string, unknown> | null)[] }>(
+      `query($ids: [ID!]!) {
+        nodes(ids: $ids) {
+          ... on Order {
+            id phone
+            customer { displayName phone }
+            shippingAddress { name city phone }
+          }
+        }
+      }`,
+      { ids: chunk },
+    );
+    if (!res.ok) return { byId, error: res.error };
+    for (const o of res.data.nodes) {
+      if (!o || !o.id) continue;
+      byId.set(fromGid(o.id), {
+        id: fromGid(o.id),
+        customer:
+          str(get(o, "shippingAddress", "name")) || str(get(o, "customer", "displayName")) || "Guest",
+        city: str(get(o, "shippingAddress", "city")),
+        phone:
+          str(get(o, "shippingAddress", "phone")) || str(o.phone) || str(get(o, "customer", "phone")),
+      });
+    }
+  }
+  return { byId };
+}

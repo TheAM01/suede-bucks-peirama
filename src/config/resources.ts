@@ -659,6 +659,8 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     subtitle: "Courier load sheets for outgoing shipments",
     guide: "dispatch",
     searchKeys: ["reference", "courier", "location"],
+    // Clicking a sheet opens its parcels + printable manifest; Edit/Delete stay in the row menu.
+    rowHref: (r) => `/dashboard/dispatch/${r.id}`,
     tabs: {
       field: "status",
       options: [

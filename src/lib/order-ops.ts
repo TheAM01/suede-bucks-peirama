@@ -263,3 +263,20 @@ export async function setOrderOps(
     return { error: DB_DOWN };
   }
 }
+
+/** Every order on a load sheet: listed in its `consignmentIds`, or pointing at it by reference. */
+export async function findBySheet(
+  reference: string,
+  consignmentIds: string[],
+): Promise<{ docs?: OrderOpsDoc[]; error?: string }> {
+  const c = await collection();
+  if ("error" in c) return { error: c.error };
+  try {
+    const docs = await c.col
+      .find({ $or: [{ loadSheet: reference }, { consignmentId: { $in: consignmentIds } }] })
+      .toArray();
+    return { docs };
+  } catch {
+    return { error: DB_DOWN };
+  }
+}
