@@ -43,6 +43,7 @@ import {
   PackageReturn,
 } from "@/components/icons";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { periodDelta, windowTotals } from "@/lib/insights";
 import type { ResourceConfig, Row, StatResult } from "./resource-types";
 
 // --- stat helpers -----------------------------------------------------------
@@ -51,6 +52,9 @@ const sum = (rows: Row[], k: string) => rows.reduce((a, r) => a + num(r, k), 0);
 const count = (rows: Row[], pred: (r: Row) => boolean) => rows.filter(pred).length;
 const money = (n: number): StatResult => ({ value: formatCurrency(n) });
 const int = (n: number): StatResult => ({ value: formatNumber(n) });
+/** Attach a real trailing-30-day vs prior-30-day change — omitted when there's no baseline (see src/lib/insights.ts). */
+const trended = (base: StatResult, delta: number | undefined): StatResult =>
+  delta === undefined ? base : { ...base, delta, caption: "vs prior 30 days" };
 
 // --- shared option sets -----------------------------------------------------
 const ACTIVE_STATUS = [
@@ -127,9 +131,9 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       { key: "notes", label: "Notes", type: "textarea" },
     ],
     stats: [
-      { label: "Total customers", icon: Users, tone: "primary", compute: (r) => ({ ...int(r.length), delta: 6.4 }) },
+      { label: "Total customers", icon: Users, tone: "primary", compute: (r) => trended(int(r.length), periodDelta(r, 30)) },
       { label: "Active", icon: UserCheck, tone: "success", compute: (r) => int(count(r, (x) => x.status === "active")) },
-      { label: "New (30d)", icon: UserPlus, tone: "highlight", compute: (r) => ({ ...int(Math.round(r.length * 0.18)), delta: 12.1 }) },
+      { label: "New (30d)", icon: UserPlus, tone: "highlight", compute: (r) => int(windowTotals(r, 30).cur) },
       { label: "Avg. lifetime value", icon: Wallet, tone: "info", compute: (r) => money(r.length ? sum(r, "spent") / r.length : 0) },
     ],
   },
@@ -236,7 +240,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     ],
     stats: [
       { label: "Active discounts", icon: BadgeCheck, tone: "success", compute: (r) => int(count(r, (x) => x.status === "active")) },
-      { label: "Total redemptions", icon: Repeat, tone: "primary", compute: (r) => ({ ...int(sum(r, "used")), delta: 9.2 }) },
+      { label: "Total redemptions", icon: Repeat, tone: "primary", compute: (r) => int(sum(r, "used")) },
       { label: "Scheduled", icon: TicketPercent, tone: "info", compute: (r) => int(count(r, (x) => x.status === "scheduled")) },
       { label: "Expired", icon: AlertTriangle, tone: "warning", compute: (r) => int(count(r, (x) => x.status === "expired")) },
     ],
@@ -283,7 +287,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       { key: "description", label: "Description", type: "textarea" },
     ],
     stats: [
-      { label: "Total products", icon: Package, tone: "primary", compute: (r) => ({ ...int(r.length), delta: 3.1 }) },
+      { label: "Total products", icon: Package, tone: "primary", compute: (r) => int(r.length) },
       { label: "Active", icon: PackageCheck, tone: "success", compute: (r) => int(count(r, (x) => x.status === "active")) },
       { label: "Out of stock", icon: PackageX, tone: "destructive", compute: (r) => int(count(r, (x) => num(x, "stock") <= 0)) },
       { label: "Inventory value", icon: Wallet, tone: "info", compute: (r) => money(r.reduce((a, x) => a + num(x, "price") * num(x, "stock"), 0)) },
@@ -598,8 +602,8 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       { key: "notes", label: "Notes", type: "textarea" },
     ],
     stats: [
-      { label: "Orders", icon: ShoppingCart, tone: "primary", compute: (r) => ({ ...int(r.length), delta: 8.7 }) },
-      { label: "Revenue", icon: DollarSign, tone: "success", compute: (r) => ({ ...money(sum(r, "total")), delta: 5.4 }) },
+      { label: "Orders", icon: ShoppingCart, tone: "primary", compute: (r) => trended(int(r.length), periodDelta(r, 30)) },
+      { label: "Revenue", icon: DollarSign, tone: "success", compute: (r) => trended(money(sum(r, "total")), periodDelta(r, 30, "total")) },
       { label: "Unfulfilled", icon: Truck, tone: "warning", compute: (r) => int(count(r, (x) => x.fulfillment === "unfulfilled")) },
       { label: "Avg. order value", icon: Receipt, tone: "info", compute: (r) => money(r.length ? sum(r, "total") / r.length : 0) },
     ],
@@ -1104,7 +1108,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     stats: [
       { label: "Open registers", icon: MonitorSmartphone, tone: "success", compute: (r) => int(count(r, (x) => x.status === "open")) },
       { label: "Cash in drawers", icon: Wallet, tone: "info", compute: (r) => money(sum(r.filter((x) => x.status === "open"), "cashFloat")) },
-      { label: "POS sales today", icon: DollarSign, tone: "primary", compute: (r) => ({ ...money(sum(r, "sales")), delta: 4.9 }) },
+      { label: "POS sales today", icon: DollarSign, tone: "primary", compute: (r) => money(sum(r, "sales")) },
       { label: "Registers", icon: Store, tone: "highlight", compute: (r) => int(r.length) },
     ],
   },

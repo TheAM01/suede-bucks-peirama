@@ -13,7 +13,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * Resource data API.
- * - App-owned resources (registers, pos-staff, segments): MongoDB, full CRUD.
+ * - App-owned resources (registers, pos-staff, segments, returns, leads):
+ *   MongoDB, full CRUD. Stock adjustments and load sheets (dispatch,
+ *   return-load-sheets) are MongoDB too, through their own modules.
  * - Shopify-backed resources: live Admin API reads when connected, EMPTY when
  *   not; writes go through the SHOPIFY_WRITERS mutation registry. Resources
  *   with no writer (transactions, abandoned, categories, inventory,

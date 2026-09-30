@@ -113,14 +113,22 @@ function OrderWebhookPanel() {
   );
 }
 
-function ScopesPanel() {
-  const [copied, setCopied] = React.useState(false);
+/**
+ * The scopes to grant in the Dev Dashboard, with copy buttons. When the
+ * store's granted scopes are known (`granted`), missing ones are highlighted
+ * and can be copied on their own.
+ */
+function ScopesPanel({ granted }: { granted?: string[] | null }) {
+  const [copied, setCopied] = React.useState<"all" | "missing" | null>(null);
+  const missing = granted
+    ? SHOPIFY_SCOPES_REQUIRED.filter((s) => !granted.includes(s))
+    : [];
 
-  async function copyScopes() {
+  async function copy(which: "all" | "missing") {
     try {
-      await navigator.clipboard.writeText(SHOPIFY_SCOPES_STRING);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(which === "all" ? SHOPIFY_SCOPES_STRING : missing.join(","));
+      setCopied(which);
+      setTimeout(() => setCopied(null), 2000);
     } catch {
       // Clipboard unavailable (http / permissions) — the list is selectable below.
     }
@@ -132,23 +140,57 @@ function ScopesPanel() {
         <div>
           <p className="text-sm font-medium">Scopes to grant the app</p>
           <p className="text-xs text-muted-foreground">
-            Tick these under the app&apos;s API access configuration in the Dev Dashboard.
+            Paste these into the app&apos;s access scopes in the Dev Dashboard, release a new
+            version, then reinstall the app on the store so the new grants take effect.
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={copyScopes}>
-          {copied ? <Check /> : null}
-          {copied ? "Copied" : "Copy list"}
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {missing.length ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => copy("missing")}>
+              {copied === "missing" ? <Check /> : null}
+              {copied === "missing" ? "Copied" : `Copy missing (${missing.length})`}
+            </Button>
+          ) : null}
+          <Button type="button" variant="outline" size="sm" onClick={() => copy("all")}>
+            {copied === "all" ? <Check /> : null}
+            {copied === "all" ? "Copied" : "Copy full list"}
+          </Button>
+        </div>
       </div>
+      {granted ? (
+        missing.length ? (
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              {missing.length} {missing.length === 1 ? "scope isn't" : "scopes aren't"} granted yet
+              — the features that need {missing.length === 1 ? "it" : "them"} will fail until you
+              add {missing.length === 1 ? "it" : "them"} and reinstall.
+            </span>
+          </div>
+        ) : (
+          <p className="flex items-center gap-2 text-sm text-success">
+            <Check className="size-4" />
+            Every required scope is granted.
+          </p>
+        )
+      ) : null}
       <div className="flex flex-wrap gap-1.5">
-        {SHOPIFY_SCOPES_REQUIRED.map((scope) => (
-          <code
-            key={scope}
-            className="rounded-md border border-border bg-card px-2 py-0.5 font-mono text-[11px] text-foreground"
-          >
-            {scope}
-          </code>
-        ))}
+        {SHOPIFY_SCOPES_REQUIRED.map((scope) => {
+          const isMissing = missing.includes(scope);
+          return (
+            <code
+              key={scope}
+              title={isMissing ? "Not granted yet" : undefined}
+              className={
+                isMissing
+                  ? "rounded-md border border-destructive/50 bg-destructive/10 px-2 py-0.5 font-mono text-[11px] text-destructive"
+                  : "rounded-md border border-border bg-card px-2 py-0.5 font-mono text-[11px] text-foreground"
+              }
+            >
+              {scope}
+            </code>
+          );
+        })}
       </div>
       <div className="border-t border-border pt-3">
         <p className="text-xs font-medium text-muted-foreground">
@@ -185,8 +227,11 @@ function ConnectSubmit({ replacing }: { replacing: boolean }) {
 
 export function IntegrationsView({
   shopify,
+  grantedScopes,
 }: {
   shopify: ShopifyIntegrationView | null;
+  /** scopes the installed app holds right now; null when unknown */
+  grantedScopes: string[] | null;
 }) {
   const [connectState, connectAction] = useActionState<
     IntegrationActionState,
@@ -316,6 +361,8 @@ export function IntegrationsView({
             </div>
           ) : null}
 
+          {connected ? <ScopesPanel granted={grantedScopes} /> : null}
+
           {connected ? <OrderWebhookPanel /> : null}
 
           {showForm ? (
@@ -340,7 +387,7 @@ export function IntegrationsView({
                 </p>
               </div>
 
-              {method === "client_credentials" ? <ScopesPanel /> : null}
+              {method === "client_credentials" && !connected ? <ScopesPanel /> : null}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">

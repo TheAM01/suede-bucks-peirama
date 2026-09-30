@@ -31,11 +31,11 @@ export async function GET() {
         ok: dbOk,
         detail: dbOk ? "MongoDB connected" : "MongoDB unreachable — check MONGODB_URI",
       }
-    : { ok: true, detail: "File storage (no database configured)" };
+    : { ok: true, detail: "No database configured — app-owned pages are empty" };
 
   const s = config.shopify;
   const shopify: ServiceStatus = !s
-    ? { ok: true, detail: "Not connected — demo data" }
+    ? { ok: true, detail: "Not connected — Shopify pages are empty" }
     : s.lastCheck
       ? {
           ok: s.lastCheck.ok,

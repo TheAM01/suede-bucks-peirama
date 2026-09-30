@@ -118,3 +118,16 @@ export async function shopifyQuery<T = unknown>(
     return { ok: false, error: msg };
   }
 }
+
+/**
+ * The Admin API scopes this app's installation actually holds — compared
+ * against SHOPIFY_SCOPES_REQUIRED on the Integrations page so a missing grant
+ * is visible instead of surfacing later as a failed action. `null` = couldn't tell.
+ */
+export async function readGrantedScopes(): Promise<string[] | null> {
+  const res = await shopifyQuery<{ currentAppInstallation: { accessScopes: { handle: string }[] } }>(
+    `{ currentAppInstallation { accessScopes { handle } } }`,
+  );
+  if (!res.ok) return null;
+  return res.data.currentAppInstallation.accessScopes.map((s) => s.handle);
+}
