@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Check,
   RotateCcw,
-  MoreHorizontal,
   Package,
   Pencil,
   Printer,
@@ -43,7 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Drawer } from "@/components/ui/drawer";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import { BulkActionsMenu, openInNewTabs } from "./bulk-actions-menu";
 import { SelectionDock } from "./selection-dock";
 import { LoadingState } from "@/components/ui/spinner";
 import type { IconType } from "@/components/icons";
@@ -142,9 +141,10 @@ const num = (rows: Row[], noun = "order") => `${rows.length} ${rows.length === 1
  * Only actions valid for the selection's current tab appear (see
  * ACTION_FROM in src/config/order-workflow.ts); the server re-checks every
  * transition. Mixed selections (orders from different tabs) get no workflow
- * actions. The generic bulk actions — Move to (a manual status override that
- * skips the workflow's side effects) and Delete (permanent, in Shopify) — sit
- * behind the ellipsis and are always offered, whatever the selection. The bar
+ * actions. The ⋯ menu (BulkActionsMenu) is always offered, whatever the
+ * selection: Open in new tab, Edit (= Modify, one order), Advanced › Move to
+ * (a manual status override that skips the workflow's side effects), and
+ * Delete (permanent, in Shopify). The bar
  * is pinned to the viewport bottom (SelectionDock).
  */
 export function OrderControlPanel({
@@ -334,27 +334,25 @@ export function OrderControlPanel({
                 );
               })
             )}
-            {/* Generic bulk actions — always behind the ellipsis, whatever the selection. */}
-            <Menu>
-              <MenuTrigger>
-                <Button variant="outline" size="icon-sm" className="shrink-0" disabled={busy} aria-label="More bulk actions">
-                  <MoreHorizontal />
-                </Button>
-              </MenuTrigger>
-              <MenuContent width="w-56">
-                <MenuLabel>Move to (manual override)</MenuLabel>
-                {ORDER_STATUS_OPTIONS.filter((o) => o.value !== status).map((o) => (
-                  <MenuItem key={o.value} onSelect={() => void moveTo(o.value)}>
-                    {o.label}
-                  </MenuItem>
-                ))}
-                <MenuSeparator />
-                <MenuItem destructive onSelect={() => setDialog("delete")}>
-                  <Trash2 />
-                  Delete permanently
-                </MenuItem>
-              </MenuContent>
-            </Menu>
+            {/* Generic bulk actions — always behind the ⋯ menu, whatever the selection. */}
+            <BulkActionsMenu
+              count={rows.length}
+              noun={["order", "orders"]}
+              busy={busy}
+              onOpenInNewTab={() => openInNewTabs(rows.map((r) => `/dashboard/orders/${r.id}`))}
+              onEdit={() => setDialog("modify")}
+              editDisabled={
+                rows.length > 1
+                  ? "Select a single order to edit"
+                  : !canRun("modify", status, rows[0]?.courier)
+                    ? `Orders in ${statusLabel(status)} can't be edited — only Exception, Pending CC, and Active`
+                    : undefined
+              }
+              moveOptions={ORDER_STATUS_OPTIONS.filter((o) => o.value !== status)}
+              onMove={(v) => void moveTo(v)}
+              onDelete={() => setDialog("delete")}
+              deleteLabel="Delete permanently"
+            />
             <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={clear} disabled={busy}>
               Clear
             </Button>

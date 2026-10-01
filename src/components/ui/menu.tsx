@@ -179,11 +179,19 @@ export function MenuItem({
   children,
   onSelect,
   destructive,
+  disabled,
+  keepOpen,
+  title,
   className,
 }: {
   children: React.ReactNode;
   onSelect?: () => void;
   destructive?: boolean;
+  disabled?: boolean;
+  /** don't close the menu on select — for items that swap the menu's contents (a drill-down) */
+  keepOpen?: boolean;
+  /** tooltip, e.g. why the item is disabled */
+  title?: string;
   className?: string;
 }) {
   const ctx = useMenu();
@@ -191,14 +199,19 @@ export function MenuItem({
     <button
       type="button"
       role="menuitem"
+      disabled={disabled}
+      aria-disabled={disabled}
+      title={title}
       className={cn(
         itemClasses,
         destructive &&
           "text-destructive hover:bg-destructive/10 hover:text-destructive [&_svg]:text-destructive",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
         className,
       )}
       onClick={() => {
-        ctx.setOpen(false);
+        if (disabled) return;
+        if (!keepOpen) ctx.setOpen(false);
         onSelect?.();
       }}
     >

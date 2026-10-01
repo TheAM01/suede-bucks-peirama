@@ -49,11 +49,10 @@ import {
   Menu,
   MenuContent,
   MenuItem,
-  MenuLabel,
-  MenuSeparator,
   MenuTrigger,
 } from "@/components/ui/menu";
 import { SelectionDock } from "./selection-dock";
+import { BulkActionsMenu, openInNewTabs } from "./bulk-actions-menu";
 import {
   ResourceForm,
   RESOURCE_FORM_ID,
@@ -166,7 +165,7 @@ export function ResourceView({
   const canDelete = !readOnly && caps.delete !== false;
   const canBulkMove = canEdit && caps.bulkMove !== false && Boolean(config?.tabs);
   /** rows get checkboxes when something can act on a selection */
-  const selectable = !readOnly && (Boolean(selectionBar) || canDelete || canBulkMove);
+  const selectable = !readOnly && (Boolean(selectionBar) || canDelete || canBulkMove || canEdit);
   const { search, page, setPage, pageSize, setTotal } = useDashboardUI();
 
   const [sort, setSort] = React.useState<SortState>(null);
@@ -229,6 +228,7 @@ export function ResourceView({
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const notConnected = source === "empty";
+  const selectedRows = rows.filter((r) => selected.has(r.id));
   const selectableOnPage = paged
     .filter((r) => !(config.rowLocked?.(r) ?? false))
     .map((r) => r.id);
@@ -600,7 +600,7 @@ export function ResourceView({
           })
         : null}
 
-      {/* Bulk action bar — pinned above the bottom bar once something's selected; actions behind the ellipsis */}
+      {/* Bulk action bar — pinned above the bottom bar once something's selected; actions behind the ⋯ menu (BulkActionsMenu) */}
       {selectable && selected.size > 0 && !selectionBar ? (
         <SelectionDock>
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
@@ -617,32 +617,21 @@ export function ResourceView({
               >
                 Clear
               </Button>
-              <Menu>
-                <MenuTrigger>
-                  <Button variant="outline" size="icon-sm" disabled={bulkBusy} aria-label="Bulk actions">
-                    <MoreHorizontal />
-                  </Button>
-                </MenuTrigger>
-                <MenuContent width="w-52">
-                  {canBulkMove && config.tabs ? (
-                    <>
-                      <MenuLabel>Move to</MenuLabel>
-                      {config.tabs.options.map((opt) => (
-                        <MenuItem key={opt.value} onSelect={() => handleBulkMove(opt.value)}>
-                          {opt.label}
-                        </MenuItem>
-                      ))}
-                      {canDelete ? <MenuSeparator /> : null}
-                    </>
-                  ) : null}
-                  {canDelete ? (
-                    <MenuItem destructive onSelect={() => setBulkDeleting(true)}>
-                      <Trash2 />
-                      Delete
-                    </MenuItem>
-                  ) : null}
-                </MenuContent>
-              </Menu>
+              <BulkActionsMenu
+                count={selected.size}
+                noun={[config.singular.toLowerCase(), config.plural.toLowerCase()]}
+                busy={bulkBusy}
+                onOpenInNewTab={
+                  config.rowHref
+                    ? () => openInNewTabs(selectedRows.map((r) => config.rowHref!(r)))
+                    : undefined
+                }
+                onEdit={canEdit ? () => selectedRows[0] && openEdit(selectedRows[0]) : undefined}
+                editDisabled={selected.size > 1 ? `Select a single ${config.singular.toLowerCase()} to edit` : undefined}
+                moveOptions={canBulkMove ? config.tabs?.options : undefined}
+                onMove={handleBulkMove}
+                onDelete={canDelete ? () => setBulkDeleting(true) : undefined}
+              />
             </div>
           </div>
         </SelectionDock>
