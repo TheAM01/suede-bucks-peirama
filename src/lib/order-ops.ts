@@ -264,6 +264,17 @@ export async function setOrderOps(
   }
 }
 
+/** Drop an order's workflow record (after the Shopify order itself was deleted). Best-effort. */
+export async function deleteOrderOps(orderId: string): Promise<void> {
+  const c = await collection();
+  if ("error" in c) return;
+  try {
+    await c.col.deleteOne({ _id: orderId });
+  } catch {
+    // orphaned record is harmless — it's never listed without its Shopify order
+  }
+}
+
 /** Every order on a load sheet: listed in its `consignmentIds`, or pointing at it by reference. */
 export async function findBySheet(
   reference: string,

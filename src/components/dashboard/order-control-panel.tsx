@@ -5,6 +5,7 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
+  ChevronDown,
   Package,
   Pencil,
   Printer,
@@ -20,6 +21,7 @@ import type { Row } from "@/config/resource-types";
 import {
   ACTION_LABEL,
   COURIERS,
+  ORDER_STATUS_OPTIONS,
   canRun,
   defaultCourierFor,
   statusLabel,
@@ -38,6 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Drawer } from "@/components/ui/drawer";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/menu";
 import { LoadingState } from "@/components/ui/spinner";
 import type { IconType } from "@/components/icons";
 
@@ -110,7 +113,7 @@ const PRIMARY: OrderAction[] = [
 ];
 const DESTRUCTIVE: OrderAction[] = ["discard", "cancel"];
 /** actions that open their own dialog instead of running straight away */
-type DialogKind = "modify" | "discard" | "consignment" | "cancel" | "confirm_malformed" | "load_sheet";
+type DialogKind = "modify" | "discard" | "consignment" | "cancel" | "confirm_malformed" | "load_sheet" | "delete";
 
 /** Actions that put a parcel on a load sheet — they ask which sheet first. */
 const SHEET_ACTIONS: OrderAction[] = ["dispatch", "add_to_load_sheet"];
@@ -121,7 +124,10 @@ const num = (rows: Row[], noun = "order") => `${rows.length} ${rows.length === 1
  * The Orders control panel — the bottom bar shown once orders are ticked.
  * Only actions valid for the selection's current tab appear (see
  * ACTION_FROM in src/config/order-workflow.ts); the server re-checks every
- * transition. Mixed selections (orders from different tabs) get no actions.
+ * transition. Mixed selections (orders from different tabs) get no workflow
+ * actions. The generic bulk actions — Move to (a manual status override that
+ * skips the workflow's side effects) and Delete (permanent, in Shopify) — are
+ * always offered, whatever the selection.
  */
 export function OrderControlPanel({
   ctx,
@@ -232,6 +238,33 @@ export function OrderControlPanel({
     else window.location.assign(url);
   }
 
+  /** Bulk manual override — same path as the order drawer's status field. */
+  async function moveTo(target: string) {
+    setBusy(true);
+    const results = await Promise.all(
+      rows.map(async (r) => ({ row: r, res: await store.update("orders", r.id, { opsStatus: target }) })),
+    );
+    setBusy(false);
+    report(results, `Moved to ${statusLabel(target)}`);
+  }
+
+  async function deleteOrders() {
+    setBusy(true);
+    const results = await Promise.all(
+      rows.map(async (r) => ({ row: r, res: await store.remove("orders", r.id) })),
+    );
+    setBusy(false);
+    report(results, "Deleted");
+  }
+
+  function report(results: { row: Row; res: { ok: boolean; error?: string } }[], verb: string) {
+    const errors = results.filter((x) => !x.res.ok).map((x) => `${x.row.number}: ${x.res.error}`);
+    const done = results.length - errors.length;
+    if (errors.length) onDone({ tone: "error", text: errors.join(" · ") });
+    else onDone({ tone: "success", text: `${verb} — ${done} ${done === 1 ? "order" : "orders"}.` });
+    clear();
+  }
+
   const close = () => setDialog(null);
 
   return (
@@ -280,6 +313,32 @@ export function OrderControlPanel({
               );
             })
           )}
+          <Menu>
+            <MenuTrigger>
+              <Button variant="outline" size="sm" className="shrink-0" disabled={busy}>
+                Move to
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </MenuTrigger>
+            <MenuContent width="w-52">
+              <MenuLabel>Manual override</MenuLabel>
+              {ORDER_STATUS_OPTIONS.filter((o) => o.value !== status).map((o) => (
+                <MenuItem key={o.value} onSelect={() => void moveTo(o.value)}>
+                  {o.label}
+                </MenuItem>
+              ))}
+            </MenuContent>
+          </Menu>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="shrink-0"
+            onClick={() => setDialog("delete")}
+            disabled={busy}
+          >
+            <Trash2 />
+            Delete
+          </Button>
           <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={clear} disabled={busy}>
             Clear
           </Button>
@@ -308,6 +367,18 @@ export function OrderControlPanel({
         title={`Discard ${num(rows)}?`}
         description="They move to Canceled here. The Shopify order itself isn't cancelled or refunded."
         confirmLabel="Discard"
+      />
+
+      <ConfirmDialog
+        open={dialog === "delete"}
+        onCancel={close}
+        onConfirm={() => {
+          close();
+          void deleteOrders();
+        }}
+        title={`Permanently delete ${num(rows)}?`}
+        description="This deletes the orders in Shopify itself, along with their payment and fulfilment records, and can't be undone. Shopify refuses some orders (open, paid ones). To take an order off the workflow without deleting it, use Discard or Move to → Canceled instead."
+        confirmLabel="Delete permanently"
       />
 
       <ConfirmDialog

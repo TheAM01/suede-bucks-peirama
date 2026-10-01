@@ -482,7 +482,7 @@ const discounts: ShopifyWriter = {
   },
 };
 
-// --- orders (update-only: note) ----------------------------------------------------
+// --- orders (note, delete) -----------------------------------------------------------
 
 const orders: ShopifyWriter = {
   async update(id, patch) {
@@ -498,11 +498,21 @@ const orders: ShopifyWriter = {
     );
     return { error };
   },
+
+  /** Permanent. Shopify refuses some orders (e.g. open paid ones) — its userError is surfaced as-is. */
+  async remove(id) {
+    const { error } = await mutate(
+      `mutation($orderId: ID!) {
+        orderDelete(orderId: $orderId) { deletedId userErrors { field message } }
+      }`,
+      { orderId: toGid("Order", id) },
+      "orderDelete",
+    );
+    return { error };
+  },
   notes: {
     create:
       "Orders can't be created directly — create a draft order and complete it, or ring it up at the register.",
-    remove:
-      "Orders can't be deleted from here — cancel or archive them in Shopify admin to keep financial records intact.",
   },
 };
 
@@ -594,7 +604,7 @@ export async function fulfillOrder(
   if (!res.ok) {
     return {
       error: /access|scope/i.test(res.error)
-        ? `${res.error} — grant read/write_merchant_managed_fulfillment_orders on the Integrations page's scope list.`
+        ? `${res.error} — the app's installation lacks read/write_merchant_managed_fulfillment_orders. Add them to the app's access scopes in the Shopify Dev Dashboard, release a new version, then update/reinstall the app on the store (Integrations shows which scopes are missing).`
         : res.error,
     };
   }

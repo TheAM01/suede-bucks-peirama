@@ -5,7 +5,7 @@ import { SHOPIFY_WRITERS } from "@/lib/shopify-writes";
 import { isAppOwned, updateAppRow, deleteAppRow } from "@/lib/app-data";
 import { updateAdjustment, deleteAdjustment } from "@/lib/stock-adjustments";
 import { updateLoadSheet, deleteLoadSheet, type LoadSheetResource } from "@/lib/dispatch";
-import { setOrderOps } from "@/lib/order-ops";
+import { setOrderOps, deleteOrderOps } from "@/lib/order-ops";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +45,9 @@ export async function PATCH(
 
   if (g.resource === "orders") {
     const writer = SHOPIFY_WRITERS.orders;
-    if (writer?.update) {
+    // Only touch Shopify when the note was sent — a status-only patch (bulk
+    // "Move to") must not overwrite the note with "".
+    if (writer?.update && "notes" in body) {
       const { error } = await writer.update(g.id, body);
       if (error) return NextResponse.json({ error }, { status: 502 });
     }
@@ -88,6 +90,14 @@ export async function DELETE(
   if (g.resource === "dispatch" || g.resource === "return-load-sheets") {
     const { error } = await deleteLoadSheet(g.resource as LoadSheetResource, g.id);
     if (error) return NextResponse.json({ error }, { status: 422 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (g.resource === "orders") {
+    const { error } = await SHOPIFY_WRITERS.orders.remove!(g.id);
+    if (error) return NextResponse.json({ error }, { status: 502 });
+    // The Shopify order is gone; its workflow record would only be an orphan.
+    await deleteOrderOps(g.id);
     return NextResponse.json({ ok: true });
   }
 

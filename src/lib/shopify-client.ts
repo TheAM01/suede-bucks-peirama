@@ -40,7 +40,7 @@ export async function shopifyQuery<T = unknown>(
     };
   }
 
-  const token = await resolveAccessToken(s);
+  let token = await resolveAccessToken(s);
   if (!token.ok || !token.accessToken) {
     return { ok: false, error: token.message };
   }
@@ -52,6 +52,33 @@ export async function shopifyQuery<T = unknown>(
   }
 
   const url = `https://${s.storeDomain}/admin/api/${s.apiVersion}/graphql.json`;
+  const first = await postGraphql<T>(url, token.accessToken, query, variables);
+
+  // A cached client-credentials token keeps the scopes it was minted with, so
+  // after new scopes are granted it still gets "Access denied" until it
+  // expires (up to 24h). Re-mint once and retry before reporting the denial.
+  if (
+    !first.ok &&
+    /access denied/i.test(first.error) &&
+    s.authMethod === "client_credentials" &&
+    !token.newCache
+  ) {
+    token = await resolveAccessToken({ ...s, cachedToken: null });
+    if (!token.ok || !token.accessToken || !token.newCache) return first;
+    s.cachedToken = token.newCache;
+    config.shopify = s;
+    await writeIntegrations(config);
+    return postGraphql<T>(url, token.accessToken, query, variables);
+  }
+  return first;
+}
+
+async function postGraphql<T>(
+  url: string,
+  accessToken: string,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<ShopifyResult<T>> {
   try {
     let res: Response;
     // GraphQL cost-based throttling: retry a 429 twice with backoff.
@@ -60,7 +87,7 @@ export async function shopifyQuery<T = unknown>(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Shopify-Access-Token": token.accessToken,
+          "X-Shopify-Access-Token": accessToken,
         },
         body: JSON.stringify({ query, variables }),
         signal: AbortSignal.timeout(15_000),
