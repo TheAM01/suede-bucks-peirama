@@ -4,6 +4,8 @@ import * as React from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
+  RotateCcw,
   MoreHorizontal,
   Package,
   Pencil,
@@ -85,6 +87,8 @@ const BUTTON_ORDER: OrderAction[] = [
   "dispatch",
   "add_to_load_sheet",
   "mark_fulfilled",
+  "mark_delivered",
+  "mark_returned",
   "unpackage",
   "move_exception",
   "cancel",
@@ -101,6 +105,8 @@ const ICON: Partial<Record<OrderAction, IconType>> = {
   dispatch: Send,
   add_to_load_sheet: Truck,
   mark_fulfilled: PackageCheck,
+  mark_delivered: Check,
+  mark_returned: RotateCcw,
   cancel: X,
   discard: Trash2,
 };
@@ -112,10 +118,19 @@ const PRIMARY: OrderAction[] = [
   "print_label",
   "dispatch",
   "mark_fulfilled",
+  "mark_delivered",
 ];
-const DESTRUCTIVE: OrderAction[] = ["discard", "cancel"];
+const DESTRUCTIVE: OrderAction[] = ["discard", "cancel", "mark_returned"];
 /** actions that open their own dialog instead of running straight away */
-type DialogKind = "modify" | "discard" | "consignment" | "cancel" | "confirm_malformed" | "load_sheet" | "delete";
+type DialogKind =
+  | "modify"
+  | "discard"
+  | "consignment"
+  | "cancel"
+  | "confirm_malformed"
+  | "load_sheet"
+  | "delete"
+  | "returned";
 
 /** Actions that put a parcel on a load sheet — they ask which sheet first. */
 const SHEET_ACTIONS: OrderAction[] = ["dispatch", "add_to_load_sheet"];
@@ -220,6 +235,8 @@ export function OrderControlPanel({
         return setDialog("consignment");
       case "cancel":
         return setDialog("cancel");
+      case "mark_returned":
+        return setDialog("returned");
       case "print_label":
         return printLabels();
       case "dispatch":
@@ -424,6 +441,19 @@ export function OrderControlPanel({
           onSubmit={(target) => {
             close();
             void run(sheetAction, rows, { target });
+          }}
+        />
+      ) : null}
+
+      {dialog === "returned" ? (
+        <ReasonDialog
+          title={`Mark ${num(rows)} returned to origin?`}
+          description="Use this when the courier brings the parcel back undelivered. The order moves to Returned and its COD is no longer owed. Restocking the items is a separate step (a stock adjustment)."
+          confirmLabel="Mark returned"
+          onClose={close}
+          onSubmit={(reason) => {
+            close();
+            void run("mark_returned", rows, { reason });
           }}
         />
       ) : null}

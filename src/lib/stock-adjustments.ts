@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb, isDbConfigured } from "./db";
 import { DB_UNAVAILABLE } from "./app-data";
 import { shopifyQuery, toGid } from "./shopify-client";
+import { adjustShopifyInventory, recordMovements, type ShopifyAdjustReason } from "./inventory-ledger";
 import type { Row } from "@/config/resource-types";
 
 /**
@@ -152,38 +153,33 @@ async function resolveRefs(
   return { item: name || "Unknown item", sku: str(item.sku), facility: str(location.name) };
 }
 
-/** Post the delta to Shopify's inventory ledger, cross-referenced by document number. */
+/** Post the delta to Shopify, cross-referenced by document number, then record it in the movement ledger. */
 async function postToShopify(
   values: AdjustmentValues,
   number: string,
+  refs: { item: string; sku: string; facility: string },
 ): Promise<string | undefined> {
-  const res = await shopifyQuery<{
-    inventoryAdjustQuantities: { userErrors?: { message: string }[] } | null;
-  }>(
-    `mutation($input: InventoryAdjustQuantitiesInput!) {
-      inventoryAdjustQuantities(input: $input) {
-        inventoryAdjustmentGroup { createdAt }
-        userErrors { field message }
-      }
-    }`,
-    {
-      input: {
-        reason: SHOPIFY_REASON[values.reason],
-        name: "available",
-        referenceDocumentUri: `suedebucks://stock-adjustments/${number}`,
-        changes: [
-          {
-            delta: values.quantity,
-            inventoryItemId: toGid("InventoryItem", values.itemId),
-            locationId: toGid("Location", values.facilityId),
-          },
-        ],
-      },
-    },
+  const error = await adjustShopifyInventory(
+    [{ inventoryItemId: values.itemId, locationId: values.facilityId, delta: values.quantity }],
+    SHOPIFY_REASON[values.reason] as ShopifyAdjustReason,
+    `suedebucks://stock-adjustments/${number}`,
   );
-  if (!res.ok) return res.error;
-  const errs = res.data.inventoryAdjustQuantities?.userErrors ?? [];
-  if (errs.length) return errs.map((e) => e.message).join("; ");
+  if (error) return error;
+  await recordMovements([
+    {
+      key: `adjustment:${number}`,
+      type: "adjustment",
+      reference: number,
+      href: "/dashboard/stock-adjustments",
+      inventoryItemId: values.itemId,
+      item: refs.item,
+      sku: refs.sku,
+      locationId: values.facilityId,
+      location: refs.facility,
+      delta: values.quantity,
+      note: values.reason,
+    },
+  ]);
   return undefined;
 }
 
@@ -243,7 +239,7 @@ export async function createAdjustment(
     // Shopify post must never leave a "completed" document behind.
     const completed = values.status === "completed";
     if (completed) {
-      const postError = await postToShopify(values, number);
+      const postError = await postToShopify(values, number, refs);
       if (postError) return { error: postError };
     }
 
@@ -318,7 +314,7 @@ export async function updateAdjustment(
       if (claim.modifiedCount === 0) {
         return { error: "This adjustment was already completed." };
       }
-      const postError = await postToShopify(values, str(existing.number));
+      const postError = await postToShopify(values, str(existing.number), refs);
       if (postError) {
         // Shopify rejected it — release the claim so the document stays editable.
         await col.updateOne({ _id: oid }, { $set: { status: "parked", completedAt: "" } });

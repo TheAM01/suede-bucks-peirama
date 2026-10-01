@@ -55,6 +55,16 @@ export function coerceValues(config: ResourceConfig, values: FormValues): Row {
 
 export const RESOURCE_FORM_ID = "resource-form";
 
+/** Option filter: drop blanks and keep only the first option per value. */
+function firstOfValue() {
+  const seen = new Set<string>();
+  return (o: { value: string; label: string }) => {
+    if (!o.value || !o.label || seen.has(o.value)) return false;
+    seen.add(o.value);
+    return true;
+  };
+}
+
 /** Select whose options come live from another resource (`field.optionsFrom`). */
 function DynamicSelect({
   field,
@@ -75,7 +85,9 @@ function DynamicSelect({
         label: String(r[src.labelKey] ?? "") + (sub ? ` (${sub})` : ""),
       };
     })
-    .filter((o) => o.value && o.label);
+    // A source can list one value on several rows (inventory has a row per
+    // item × location) — offer each value once.
+    .filter(firstOfValue());
   // A saved value can vanish from the source (e.g. deleted in Shopify) —
   // keep it selectable so the edit form doesn't silently blank the field.
   const stale = value !== "" && !options.some((o) => o.value === value);
@@ -125,7 +137,7 @@ function MultiSelectPicker({
           label: String(r[src.labelKey] ?? ""),
           sub: src.subKey ? String(r[src.subKey] ?? "") : "",
         }))
-        .filter((o) => o.value && o.label),
+        .filter(firstOfValue()),
     [rows, src.valueKey, src.labelKey, src.subKey],
   );
 
@@ -257,7 +269,7 @@ export function ResourceForm({
       }}
       className="grid grid-cols-2 gap-4"
     >
-      {config.fields.map((field) => {
+      {config.fields.filter((f) => !f.hidden).map((field) => {
         const full = !field.half || field.type === "textarea";
         return (
           <div

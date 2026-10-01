@@ -106,7 +106,8 @@ export default async function LabelsPage({
                 className="mx-auto my-3 w-[2.4in] [&_svg]:h-auto [&_svg]:w-full"
                 dangerouslySetInnerHTML={{ __html: l.qrSvg ?? "" }}
               />
-              <p className="text-center font-mono text-base font-bold tracking-wider">{l.consignmentId}</p>
+              {/* Generated IDs run up to ~40 chars — small, untracked, and allowed to wrap rather than overflow the 4in label. */}
+              <p className="break-all text-center font-mono text-xs font-bold leading-tight">{l.consignmentId}</p>
               <div className="mt-3 border-t-2 border-black pt-2">
                 <p className="text-xs uppercase">Ship to</p>
                 <p className="text-lg font-bold leading-tight">{l.name}</p>

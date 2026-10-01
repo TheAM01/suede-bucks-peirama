@@ -72,6 +72,10 @@ export interface OrderOpsDoc {
   labelPrintedAt?: string;
   fulfilledAt?: string;
   dispatchedAt?: string;
+  deliveredAt?: string;
+  returnedAt?: string;
+  /** shipping city, snapshot at Assign consignment — for shipment tracking and courier stats */
+  city?: string;
   loadSheet?: string;
   cancelReason?: string;
   history?: OpsHistoryEntry[];
@@ -138,6 +142,22 @@ export async function getOrderOps(
   try {
     const doc = await c.col.findOne({ _id: orderId });
     return { doc: doc ?? { _id: orderId, opsStatus: DEFAULT_STATUS, history: [] } };
+  } catch {
+    return { error: DB_DOWN };
+  }
+}
+
+/** Every order that has a consignment — the shipment tracking board's source. Newest first. */
+export async function listConsignedOrders(): Promise<{ docs?: OrderOpsDoc[]; error?: string }> {
+  const c = await collection();
+  if ("error" in c) return { error: c.error };
+  try {
+    const docs = await c.col
+      .find({ consignmentId: { $type: "string" } }, { projection: { history: 0 } })
+      .sort({ updatedAt: -1 })
+      .limit(5000)
+      .toArray();
+    return { docs };
   } catch {
     return { error: DB_DOWN };
   }

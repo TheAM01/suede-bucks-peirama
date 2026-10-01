@@ -1,4 +1,6 @@
 import { ORDER_STATUS_OPTIONS } from "./order-workflow";
+import { DOC_STATUS_OPTIONS, OPEN_INBOUND_STATUSES } from "./inventory-docs";
+import { SHIPMENT_STUCK_DAYS, TRACKING_STAGES } from "./logistics";
 import {
   Users,
   UserCheck,
@@ -41,10 +43,20 @@ import {
   Lock,
   Archive,
   PackageReturn,
+  History,
+  ClipboardList,
+  ClipboardCheck,
+  ArrowLeftRight,
+  ArrowDown,
+  ArrowUp,
+  Clock,
+  Navigation,
+  Inbox,
+  Banknote,
 } from "@/components/icons";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { periodDelta, windowTotals } from "@/lib/insights";
-import type { ResourceConfig, Row, StatResult } from "./resource-types";
+import type { BadgeVariant, ResourceConfig, Row, StatResult } from "./resource-types";
 
 // --- stat helpers -----------------------------------------------------------
 const num = (r: Row, k: string) => Number(r[k] ?? 0);
@@ -55,6 +67,31 @@ const int = (n: number): StatResult => ({ value: formatNumber(n) });
 /** Attach a real trailing-30-day vs prior-30-day change — omitted when there's no baseline (see src/lib/insights.ts). */
 const trended = (base: StatResult, delta: number | undefined): StatResult =>
   delta === undefined ? base : { ...base, delta, caption: "vs prior 30 days" };
+
+// --- inventory / logistics helpers --------------------------------------------
+const isOpenInbound = (r: Row) => (OPEN_INBOUND_STATUSES as readonly string[]).includes(String(r.status));
+/** Value of what's still to arrive on a PO (line values pro-rated by units remaining). */
+const openValue = (r: Row) => (num(r, "units") ? (num(r, "value") * num(r, "remainingUnits")) / num(r, "units") : 0);
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const isPast = (d: unknown) => Boolean(d) && String(d) < todayIso();
+const isWithinDays = (d: unknown, days: number) =>
+  Boolean(d) && Date.now() - Date.parse(String(d)) <= days * 86_400_000;
+
+const MOVEMENT_TYPE_OPTIONS: { value: string; label: string; variant: BadgeVariant }[] = [
+  { value: "sale", label: "Sale", variant: "secondary" },
+  { value: "receipt", label: "PO receipt", variant: "success" },
+  { value: "transfer_out", label: "Transfer out", variant: "warning" },
+  { value: "transfer_in", label: "Transfer in", variant: "info" },
+  { value: "adjustment", label: "Adjustment", variant: "primary" },
+  { value: "stocktake", label: "Stocktake", variant: "outline" },
+];
+
+const INBOUND_TIMING: { value: string; label: string; variant: BadgeVariant }[] = [
+  { value: "overdue", label: "Overdue", variant: "destructive" },
+  { value: "today", label: "Due today", variant: "warning" },
+  { value: "upcoming", label: "Upcoming", variant: "info" },
+  { value: "no_date", label: "No date", variant: "outline" },
+];
 
 // --- shared option sets -----------------------------------------------------
 const ACTIVE_STATUS = [
@@ -350,38 +387,53 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     singular: "Stock item",
     plural: "Inventory",
     icon: Boxes,
-    subtitle: "Stock levels across locations",
+    subtitle: "Stock levels per location",
     guide: "inventory",
     searchKeys: ["name", "sku", "location"],
+    // Quantities come from Shopify and move through documents; a row only
+    // takes its app-side reorder settings.
+    capabilities: { create: false, delete: false, bulkMove: false },
+    tabs: {
+      field: "status",
+      options: [
+        { value: "in_stock", label: "In stock" },
+        { value: "low", label: "Low stock" },
+        { value: "out", label: "Out of stock" },
+      ],
+    },
     columns: [
       { key: "name", header: "Item", type: "primary", sub: "sku" },
       { key: "location", header: "Location", type: "muted" },
       { key: "onHand", header: "On hand", type: "number", align: "right" },
+      { key: "committed", header: "Committed", type: "number", align: "right" },
       { key: "available", header: "Available", type: "number", align: "right" },
+      { key: "onOrder", header: "On order", type: "number", align: "right" },
+      { key: "inTransit", header: "In transit", type: "number", align: "right" },
+      { key: "reorderPoint", header: "Reorder at", type: "number", align: "right" },
+      { key: "suggested", header: "Suggested order", type: "number", align: "right" },
+      { key: "stockValue", header: "Stock value", type: "currency", align: "right" },
       { key: "status", header: "Status", type: "status" },
     ],
     fields: [
-      { key: "name", label: "Item", type: "text", required: true },
-      { key: "sku", label: "SKU", type: "text", half: true },
       {
-        key: "location",
-        label: "Location",
-        type: "select",
+        key: "reorderPoint",
+        label: "Reorder point",
+        type: "number",
         half: true,
-        options: [
-          { value: "Main Warehouse", label: "Main Warehouse" },
-          { value: "Flagship Store", label: "Flagship Store" },
-          { value: "Airport Popup", label: "Airport Popup" },
-        ],
+        help: "Low stock when Available falls to this (5 if left at 0).",
       },
-      { key: "onHand", label: "On hand", type: "number", half: true },
-      { key: "committed", label: "Committed", type: "number", half: true },
-      { key: "available", label: "Available", type: "number", half: true },
-      { key: "reorderPoint", label: "Reorder point", type: "number", half: true },
+      {
+        key: "reorderQty",
+        label: "Reorder quantity",
+        type: "number",
+        half: true,
+        help: "How much a top-up should bring in — drives Suggested order.",
+      },
       {
         key: "status",
         label: "Status",
         type: "status",
+        hidden: true,
         options: [
           { value: "in_stock", label: "In stock", variant: "success" },
           { value: "low", label: "Low stock", variant: "warning" },
@@ -390,10 +442,238 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       },
     ],
     stats: [
-      { label: "SKUs tracked", icon: Boxes, tone: "primary", compute: (r) => int(r.length) },
-      { label: "Units on hand", icon: Package, tone: "info", compute: (r) => int(sum(r, "onHand")) },
+      { label: "Units on hand", icon: Package, tone: "primary", compute: (r) => int(sum(r, "onHand")) },
+      { label: "Stock value", icon: DollarSign, tone: "info", compute: (r) => money(sum(r, "stockValue")) },
       { label: "Low stock", icon: AlertTriangle, tone: "warning", compute: (r) => int(count(r, (x) => x.status === "low")) },
       { label: "Out of stock", icon: PackageX, tone: "destructive", compute: (r) => int(count(r, (x) => x.status === "out")) },
+    ],
+  },
+
+  // ==========================================================================
+  "stock-movements": {
+    key: "stock-movements",
+    singular: "Stock movement",
+    plural: "Stock Movements",
+    icon: History,
+    subtitle: "Every stock change, per item and location",
+    guide: "stock-movements",
+    searchKeys: ["reference", "item", "sku", "location", "note"],
+    rowHref: (r) => (r.href ? String(r.href) : "/dashboard/stock-movements"),
+    tabs: {
+      field: "type",
+      options: MOVEMENT_TYPE_OPTIONS.map(({ value, label }) => ({ value, label })),
+    },
+    columns: [
+      { key: "at", header: "When", type: "datetime" },
+      { key: "reference", header: "Document", type: "mono" },
+      { key: "type", header: "Type", type: "status" },
+      { key: "item", header: "Item", type: "primary", sub: "sku" },
+      { key: "location", header: "Location", type: "muted" },
+      { key: "delta", header: "Change", type: "number", align: "right" },
+      { key: "note", header: "Note", type: "muted" },
+    ],
+    fields: [{ key: "type", label: "Type", type: "status", options: MOVEMENT_TYPE_OPTIONS }],
+    stats: [
+      { label: "Movements", icon: History, tone: "primary", compute: (r) => int(r.length) },
+      { label: "Units in", icon: ArrowDown, tone: "success", compute: (r) => int(sum(r.filter((x) => num(x, "delta") > 0), "delta")) },
+      { label: "Units out", icon: ArrowUp, tone: "warning", compute: (r) => int(-sum(r.filter((x) => num(x, "delta") < 0), "delta")) },
+      { label: "Net change", icon: Boxes, tone: "info", compute: (r) => int(sum(r, "delta")) },
+    ],
+  },
+
+  // ==========================================================================
+  "purchase-orders": {
+    key: "purchase-orders",
+    singular: "Purchase order",
+    plural: "Purchase Orders",
+    icon: ClipboardList,
+    subtitle: "Stock ordered from suppliers",
+    guide: "purchase-orders",
+    searchKeys: ["number", "supplier", "location", "trackingNumber"],
+    rowHref: (r) => `/dashboard/purchase-orders/${r.id}`,
+    rowLocked: (r) => r.status !== "draft",
+    lockedHint: "Open it to receive stock or update shipping — only drafts are edited or deleted from the list.",
+    capabilities: { bulkMove: false },
+    tabs: { field: "status", options: DOC_STATUS_OPTIONS["purchase-orders"].map(({ value, label }) => ({ value, label })) },
+    columns: [
+      { key: "number", header: "PO", type: "primary", sub: "supplier" },
+      { key: "location", header: "Deliver to", type: "muted" },
+      { key: "status", header: "Status", type: "status" },
+      { key: "units", header: "Units", type: "number", align: "right" },
+      { key: "receivedUnits", header: "Received", type: "number", align: "right" },
+      { key: "value", header: "Value", type: "currency", align: "right" },
+      { key: "expectedAt", header: "Expected", type: "date" },
+      { key: "createdAt", header: "Created", type: "date" },
+    ],
+    fields: [
+      {
+        key: "supplierId",
+        label: "Supplier",
+        type: "select",
+        required: true,
+        optionsFrom: { resource: "suppliers", valueKey: "id", labelKey: "name" },
+        help: "Add suppliers on the Suppliers page.",
+      },
+      {
+        key: "locationId",
+        label: "Deliver to",
+        type: "select",
+        required: true,
+        half: true,
+        optionsFrom: { resource: "locations", valueKey: "id", labelKey: "name" },
+      },
+      { key: "expectedAt", label: "Expected by", type: "date", half: true },
+      { key: "carrier", label: "Carrier", type: "text", half: true, placeholder: "Optional — set when shipped" },
+      { key: "trackingNumber", label: "Tracking number", type: "text", half: true },
+      { key: "eta", label: "ETA", type: "date", half: true },
+      { key: "notes", label: "Notes", type: "textarea" },
+      { key: "status", label: "Status", type: "status", hidden: true, options: DOC_STATUS_OPTIONS["purchase-orders"] },
+    ],
+    stats: [
+      { label: "Open orders", icon: ClipboardList, tone: "primary", compute: (r) => int(count(r, isOpenInbound)) },
+      { label: "Units on order", icon: Boxes, tone: "info", compute: (r) => int(sum(r.filter(isOpenInbound), "remainingUnits")) },
+      { label: "Value on order", icon: DollarSign, tone: "highlight", compute: (r) => money(r.filter(isOpenInbound).reduce((a, x) => a + openValue(x), 0)) },
+      { label: "Overdue", icon: AlertTriangle, tone: "warning", compute: (r) => int(count(r, (x) => isOpenInbound(x) && isPast(x.eta || x.expectedAt))) },
+    ],
+  },
+
+  // ==========================================================================
+  suppliers: {
+    key: "suppliers",
+    singular: "Supplier",
+    plural: "Suppliers",
+    icon: Building2,
+    subtitle: "Who you buy stock from",
+    guide: "suppliers",
+    searchKeys: ["name", "contact", "email", "phone", "city"],
+    columns: [
+      { key: "name", header: "Supplier", type: "primary", sub: "contact" },
+      { key: "phone", header: "Phone", type: "text" },
+      { key: "email", header: "Email", type: "muted" },
+      { key: "city", header: "City", type: "muted" },
+      { key: "leadTimeDays", header: "Lead time (days)", type: "number", align: "right" },
+      { key: "paymentTerms", header: "Terms", type: "text" },
+    ],
+    fields: [
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "contact", label: "Contact person", type: "text", half: true },
+      { key: "phone", label: "Phone", type: "text", half: true },
+      { key: "email", label: "Email", type: "email", half: true },
+      { key: "city", label: "City", type: "text", half: true },
+      { key: "leadTimeDays", label: "Lead time (days)", type: "number", half: true, help: "Usual days from order to delivery." },
+      { key: "paymentTerms", label: "Payment terms", type: "text", half: true, placeholder: "e.g. 50% advance, rest on delivery" },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+    stats: [
+      { label: "Suppliers", icon: Building2, tone: "primary", compute: (r) => int(r.length) },
+      { label: "Cities", icon: MapPin, tone: "info", compute: (r) => int(new Set(r.map((x) => String(x.city ?? "")).filter(Boolean)).size) },
+      {
+        label: "Avg. lead time",
+        icon: Clock,
+        tone: "highlight",
+        compute: (r) => {
+          const withLead = r.filter((x) => num(x, "leadTimeDays") > 0);
+          return { value: withLead.length ? `${(sum(withLead, "leadTimeDays") / withLead.length).toFixed(1)} days` : "—" };
+        },
+      },
+      { label: "No contact details", icon: AlertTriangle, tone: "warning", compute: (r) => int(count(r, (x) => !x.phone && !x.email)) },
+    ],
+  },
+
+  // ==========================================================================
+  transfers: {
+    key: "transfers",
+    singular: "Transfer",
+    plural: "Transfers",
+    icon: ArrowLeftRight,
+    subtitle: "Stock moving between locations",
+    guide: "transfers",
+    searchKeys: ["number", "from", "to", "trackingNumber"],
+    rowHref: (r) => `/dashboard/transfers/${r.id}`,
+    rowLocked: (r) => r.status !== "draft",
+    lockedHint: "Open it to receive stock or update shipping — only drafts are edited or deleted from the list.",
+    capabilities: { bulkMove: false },
+    tabs: { field: "status", options: DOC_STATUS_OPTIONS.transfers.map(({ value, label }) => ({ value, label })) },
+    columns: [
+      { key: "number", header: "Transfer", type: "primary", sub: "from" },
+      { key: "to", header: "To", type: "text" },
+      { key: "status", header: "Status", type: "status" },
+      { key: "units", header: "Units", type: "number", align: "right" },
+      { key: "receivedUnits", header: "Received", type: "number", align: "right" },
+      { key: "carrier", header: "Carrier", type: "muted" },
+      { key: "eta", header: "ETA", type: "date" },
+      { key: "createdAt", header: "Created", type: "date" },
+    ],
+    fields: [
+      {
+        key: "fromLocationId",
+        label: "From",
+        type: "select",
+        required: true,
+        half: true,
+        optionsFrom: { resource: "locations", valueKey: "id", labelKey: "name" },
+      },
+      {
+        key: "toLocationId",
+        label: "To",
+        type: "select",
+        required: true,
+        half: true,
+        optionsFrom: { resource: "locations", valueKey: "id", labelKey: "name" },
+      },
+      { key: "carrier", label: "Carrier", type: "text", half: true, placeholder: "Optional" },
+      { key: "trackingNumber", label: "Tracking number", type: "text", half: true },
+      { key: "eta", label: "ETA", type: "date", half: true },
+      { key: "notes", label: "Notes", type: "textarea" },
+      { key: "status", label: "Status", type: "status", hidden: true, options: DOC_STATUS_OPTIONS.transfers },
+    ],
+    stats: [
+      { label: "In transit", icon: Truck, tone: "primary", compute: (r) => int(count(r, isOpenInbound)) },
+      { label: "Units in transit", icon: Boxes, tone: "info", compute: (r) => int(sum(r.filter(isOpenInbound), "remainingUnits")) },
+      { label: "Drafts", icon: FileText, tone: "highlight", compute: (r) => int(count(r, (x) => x.status === "draft")) },
+      { label: "Overdue", icon: AlertTriangle, tone: "warning", compute: (r) => int(count(r, (x) => isOpenInbound(x) && isPast(x.eta))) },
+    ],
+  },
+
+  // ==========================================================================
+  stocktakes: {
+    key: "stocktakes",
+    singular: "Stocktake",
+    plural: "Stocktakes",
+    icon: ClipboardCheck,
+    subtitle: "Count stock and post the differences",
+    guide: "stocktakes",
+    searchKeys: ["number", "location", "notes"],
+    rowHref: (r) => `/dashboard/stocktakes/${r.id}`,
+    rowLocked: (r) => r.status !== "draft",
+    lockedHint: "Posted and cancelled stocktakes are part of the audit trail.",
+    capabilities: { bulkMove: false },
+    tabs: { field: "status", options: DOC_STATUS_OPTIONS.stocktakes.map(({ value, label }) => ({ value, label })) },
+    columns: [
+      { key: "number", header: "Stocktake", type: "primary", sub: "location" },
+      { key: "status", header: "Status", type: "status" },
+      { key: "lineCount", header: "Items", type: "number", align: "right" },
+      { key: "countedLines", header: "Counted", type: "number", align: "right" },
+      { key: "varianceUnits", header: "Net variance", type: "number", align: "right" },
+      { key: "createdAt", header: "Started", type: "date" },
+      { key: "postedAt", header: "Posted", type: "datetime" },
+    ],
+    fields: [
+      {
+        key: "locationId",
+        label: "Location",
+        type: "select",
+        required: true,
+        optionsFrom: { resource: "locations", valueKey: "id", labelKey: "name" },
+      },
+      { key: "notes", label: "Notes", type: "textarea", placeholder: "e.g. Monthly count — shelf A only" },
+      { key: "status", label: "Status", type: "status", hidden: true, options: DOC_STATUS_OPTIONS.stocktakes },
+    ],
+    stats: [
+      { label: "Counting", icon: ClipboardCheck, tone: "warning", compute: (r) => int(count(r, (x) => x.status === "draft")) },
+      { label: "Posted", icon: Lock, tone: "success", compute: (r) => int(count(r, (x) => x.status === "posted")) },
+      { label: "Items counted", icon: Boxes, tone: "info", compute: (r) => int(sum(r.filter((x) => x.status === "posted"), "countedLines")) },
+      { label: "Net variance", icon: SlidersHorizontal, tone: "highlight", compute: (r) => int(sum(r.filter((x) => x.status === "posted"), "varianceUnits")) },
     ],
   },
 
@@ -883,6 +1163,158 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       { label: "Draft", icon: FileText, tone: "warning", compute: (r) => int(count(r, (x) => x.status === "draft")) },
       { label: "Posted", icon: Send, tone: "success", compute: (r) => int(count(r, (x) => x.status === "posted")) },
       { label: "Archived", icon: Archive, tone: "highlight", compute: (r) => int(count(r, (x) => x.status === "archived")) },
+    ],
+  },
+
+  // ==========================================================================
+  shipments: {
+    key: "shipments",
+    singular: "Shipment",
+    plural: "Shipments",
+    icon: Navigation,
+    subtitle: "Every consignment, from pickup to delivery",
+    guide: "shipments",
+    searchKeys: ["number", "consignmentId", "courier", "city", "loadSheet"],
+    rowHref: (r) => `/dashboard/orders/${r.id}`,
+    // Ticked rows get the Shipments control panel (delivered / returned); nothing is edited directly.
+    capabilities: { create: false, edit: false, delete: false, bulkMove: false },
+    tabs: { field: "stage", options: TRACKING_STAGES.map(({ value, label }) => ({ value, label })) },
+    columns: [
+      { key: "number", header: "Order", type: "primary", sub: "consignmentId" },
+      { key: "courier", header: "Courier", type: "text" },
+      { key: "city", header: "City", type: "muted" },
+      { key: "stage", header: "Tracking", type: "status" },
+      { key: "daysInTransit", header: "Days out", type: "number", align: "right" },
+      { key: "codAmount", header: "COD", type: "currency", align: "right" },
+      { key: "loadSheet", header: "Load sheet", type: "mono" },
+      { key: "dispatchedAt", header: "Dispatched", type: "datetime" },
+      { key: "deliveredAt", header: "Delivered", type: "datetime" },
+    ],
+    fields: [{ key: "stage", label: "Tracking", type: "status", hidden: true, options: TRACKING_STAGES }],
+    stats: [
+      { label: "In transit", icon: Truck, tone: "primary", compute: (r) => int(count(r, (x) => x.stage === "in_transit")) },
+      {
+        label: `Stuck (over ${SHIPMENT_STUCK_DAYS} days)`,
+        icon: AlertTriangle,
+        tone: "warning",
+        compute: (r) => int(count(r, (x) => x.stuck === true)),
+      },
+      { label: "COD in the field", icon: Wallet, tone: "info", compute: (r) => money(sum(r.filter((x) => x.stage === "in_transit"), "codAmount")) },
+      {
+        label: "Return rate",
+        icon: RotateCcw,
+        tone: "destructive",
+        compute: (r) => {
+          const done = count(r, (x) => x.stage === "delivered" || x.stage === "returned");
+          return {
+            value: done ? `${((count(r, (x) => x.stage === "returned") / done) * 100).toFixed(1)}%` : "—",
+            caption: done ? `of ${formatNumber(done)} finished` : undefined,
+          };
+        },
+      },
+    ],
+  },
+
+  // ==========================================================================
+  inbound: {
+    key: "inbound",
+    singular: "Inbound shipment",
+    plural: "Inbound",
+    icon: Inbox,
+    subtitle: "Supplier orders and transfers on their way",
+    guide: "inbound",
+    searchKeys: ["number", "origin", "destination", "carrier", "trackingNumber"],
+    rowHref: (r) => `/dashboard/${r.kind}/${r.docId}`,
+    tabs: {
+      field: "timing",
+      options: INBOUND_TIMING.map(({ value, label }) => ({ value, label })),
+    },
+    columns: [
+      { key: "number", header: "Document", type: "primary", sub: "origin" },
+      { key: "type", header: "Type", type: "status" },
+      { key: "destination", header: "To", type: "text" },
+      { key: "status", header: "Status", type: "status" },
+      { key: "carrier", header: "Carrier", type: "muted" },
+      { key: "trackingNumber", header: "Tracking", type: "mono" },
+      { key: "due", header: "Due", type: "date" },
+      { key: "timing", header: "Timing", type: "status" },
+      { key: "remainingUnits", header: "Units to come", type: "number", align: "right" },
+    ],
+    fields: [
+      {
+        key: "type",
+        label: "Type",
+        type: "status",
+        options: [
+          { value: "purchase", label: "Purchase order", variant: "primary" },
+          { value: "transfer", label: "Transfer", variant: "info" },
+        ],
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "status",
+        // PO and transfer statuses share values; the PO list covers both.
+        options: DOC_STATUS_OPTIONS["purchase-orders"],
+      },
+      { key: "timing", label: "Timing", type: "status", options: INBOUND_TIMING },
+    ],
+    stats: [
+      { label: "On the way", icon: Inbox, tone: "primary", compute: (r) => int(r.length) },
+      { label: "Units to come", icon: Boxes, tone: "info", compute: (r) => int(sum(r, "remainingUnits")) },
+      { label: "Due today", icon: Clock, tone: "highlight", compute: (r) => int(count(r, (x) => x.timing === "today")) },
+      { label: "Overdue", icon: AlertTriangle, tone: "warning", compute: (r) => int(count(r, (x) => x.timing === "overdue")) },
+    ],
+  },
+
+  // ==========================================================================
+  "cod-remittances": {
+    key: "cod-remittances",
+    singular: "Remittance",
+    plural: "COD Reconciliation",
+    icon: Banknote,
+    subtitle: "Cash on delivery owed and paid by couriers",
+    guide: "cod-remittances",
+    searchKeys: ["courier", "reference", "notes"],
+    columns: [
+      { key: "receivedAt", header: "Received", type: "date" },
+      { key: "courier", header: "Courier", type: "primary", sub: "reference" },
+      { key: "amount", header: "Amount", type: "currency", align: "right" },
+      { key: "notes", header: "Notes", type: "muted" },
+    ],
+    fields: [
+      {
+        key: "courier",
+        label: "Courier",
+        type: "select",
+        required: true,
+        half: true,
+        optionsFrom: { resource: "shipments", valueKey: "courier", labelKey: "courier" },
+        help: "Couriers that have carried at least one consignment.",
+      },
+      { key: "amount", label: "Amount received", type: "currency", required: true, half: true },
+      { key: "receivedAt", label: "Date received", type: "date", half: true },
+      { key: "reference", label: "Payment reference", type: "text", half: true, placeholder: "Bank / cheque ref" },
+      {
+        key: "loadSheetIds",
+        label: "Settles load sheets",
+        type: "multiselect",
+        itemNoun: "load sheet",
+        optionsFrom: { resource: "dispatch", valueKey: "id", labelKey: "reference", subKey: "courier" },
+        help: "Ticked sheets are marked COD reconciled when you save.",
+      },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+    stats: [
+      { label: "Remitted", icon: Banknote, tone: "success", compute: (r) => money(sum(r, "amount")) },
+      {
+        label: "Last 30 days",
+        icon: Clock,
+        tone: "info",
+        compute: (r) => money(sum(r.filter((x) => isWithinDays(x.receivedAt, 30)), "amount")),
+      },
+      { label: "Remittances", icon: Receipt, tone: "primary", compute: (r) => int(r.length) },
+      { label: "Couriers paid", icon: Truck, tone: "highlight", compute: (r) => int(new Set(r.map((x) => String(x.courier ?? ""))).size) },
     ],
   },
 

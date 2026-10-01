@@ -188,7 +188,7 @@ export async function runOrderAction(
       });
       return move(
         "finalized",
-        { courier, consignmentId },
+        { courier, consignmentId, city },
         `Consignment ${consignmentId} generated (${courier})`,
         ["bookingError"],
       );
@@ -251,6 +251,14 @@ export async function runOrderAction(
         { fulfilledAt: at },
         via === "QR scan" ? "Delivered — label scanned, fulfilled in Shopify" : "Delivered — fulfilled in Shopify",
       );
+    }
+
+    case "mark_delivered":
+      return move("delivered", { deliveredAt: at }, str(payload.note) || "Delivered — confirmed by the courier");
+
+    case "mark_returned": {
+      const reason = str(payload.reason);
+      return move("returned", { returnedAt: at }, reason ? `Returned to origin — ${reason}` : "Returned to origin (RTO)");
     }
 
     case "cancel": {

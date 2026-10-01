@@ -1,6 +1,7 @@
 import "server-only";
 import { shopifyQuery, toGid, fromGid } from "./shopify-client";
 import type { Row } from "@/config/resource-types";
+import { saveReorderPoint } from "./inventory-levels";
 
 /**
  * Live Shopify writes (migration Phase 4): one mutation mapper per resource,
@@ -635,13 +636,25 @@ export async function fulfillOrder(
 
 // --- registry -----------------------------------------------------------------------
 
+/** Inventory rows only take app-side reorder settings; quantities move through documents (adjustments, POs, transfers, stocktakes). */
+const inventory: ShopifyWriter = {
+  async update(id, patch) {
+    return saveReorderPoint(id, patch);
+  },
+  notes: {
+    create: "Stock rows come from Shopify — add the product there, then receive stock with a purchase order or adjustment.",
+    remove: "Stock rows come from Shopify and can't be deleted here.",
+  },
+};
+
 /**
  * Resources without an entry stay read-only: `categories` (derived from
- * product types), `transactions` / `abandoned` (immutable financial data),
- * `inventory` (quantities move via stock adjustments, not row edits), and
+ * product types), `transactions` / `abandoned` (immutable financial data), and
  * `locations` (managed in Shopify admin — deleting one strands inventory).
+ * `inventory` only edits reorder settings (stored in MongoDB, not Shopify).
  */
 export const SHOPIFY_WRITERS: Record<string, ShopifyWriter> = {
+  inventory,
   products,
   customers,
   collections,

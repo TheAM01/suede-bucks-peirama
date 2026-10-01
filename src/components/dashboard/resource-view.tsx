@@ -160,6 +160,13 @@ export function ResourceView({
   const router = useRouter();
   const store = useStore();
   const { rows, loading, readOnly, source, error } = useResource(resourceKey);
+  const caps = config?.capabilities ?? {};
+  const canCreate = !readOnly && caps.create !== false;
+  const canEdit = !readOnly && caps.edit !== false;
+  const canDelete = !readOnly && caps.delete !== false;
+  const canBulkMove = canEdit && caps.bulkMove !== false && Boolean(config?.tabs);
+  /** rows get checkboxes when something can act on a selection */
+  const selectable = !readOnly && (Boolean(selectionBar) || canDelete || canBulkMove);
   const { search, page, setPage, pageSize, setTotal } = useDashboardUI();
 
   const [sort, setSort] = React.useState<SortState>(null);
@@ -242,7 +249,7 @@ export function ResourceView({
     else openEdit(row);
   }
   function openEdit(row: Row) {
-    if (readOnly || config?.rowLocked?.(row)) return;
+    if (!canEdit || config?.rowLocked?.(row)) return;
     setMutationError(null);
     setEditing(row);
     setValues(initialValues(config!, row));
@@ -380,7 +387,7 @@ export function ResourceView({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {toolbar}
-            {!readOnly ? (
+            {canCreate ? (
               <Button onClick={openCreate}>
                 <Plus />
                 New {config.singular.toLowerCase()}
@@ -424,12 +431,12 @@ export function ResourceView({
                 description={
                   search
                     ? "Try a different search term."
-                    : readOnly
-                      ? `Nothing here in your store yet.`
+                    : !canCreate
+                      ? `Nothing here yet.`
                       : `Create your first ${config.singular.toLowerCase()} to get started.`
                 }
                 action={
-                  !search && !readOnly ? (
+                  !search && canCreate ? (
                     <Button onClick={openCreate}>
                       <Plus />
                       New {config.singular.toLowerCase()}
@@ -443,7 +450,7 @@ export function ResourceView({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                {!readOnly ? (
+                {selectable ? (
                   <TableHead className="w-10">
                     <input
                       type="checkbox"
@@ -492,7 +499,7 @@ export function ResourceView({
                     </TableHead>
                   );
                 })}
-                {!readOnly ? <TableHead className="w-10" /> : null}
+                {canEdit || canDelete ? <TableHead className="w-10" /> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -505,11 +512,11 @@ export function ResourceView({
                     key={row.id}
                     className={cn(
                       "group",
-                      (href || (!readOnly && !locked)) && "cursor-pointer",
+                      (href || (canEdit && !locked)) && "cursor-pointer",
                     )}
                     onClick={() => openRow(row)}
                   >
-                    {!readOnly ? (
+                    {selectable ? (
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         {!locked ? (
                           <input
@@ -530,7 +537,7 @@ export function ResourceView({
                         <Cell config={config} col={col} row={row} index={rowIndex} />
                       </TableCell>
                     ))}
-                    {!readOnly ? (
+                    {canEdit || canDelete ? (
                       <TableCell
                         className="text-right"
                         onClick={(e) => e.stopPropagation()}
@@ -560,14 +567,18 @@ export function ResourceView({
                                   View details
                                 </MenuItem>
                               ) : null}
-                              <MenuItem onSelect={() => openEdit(row)}>
-                                <Pencil />
-                                Edit
-                              </MenuItem>
-                              <MenuItem destructive onSelect={() => setDeleting(row)}>
-                                <Trash2 />
-                                Delete
-                              </MenuItem>
+                              {canEdit ? (
+                                <MenuItem onSelect={() => openEdit(row)}>
+                                  <Pencil />
+                                  Edit
+                                </MenuItem>
+                              ) : null}
+                              {canDelete ? (
+                                <MenuItem destructive onSelect={() => setDeleting(row)}>
+                                  <Trash2 />
+                                  Delete
+                                </MenuItem>
+                              ) : null}
                             </MenuContent>
                           </Menu>
                         )}
@@ -582,7 +593,7 @@ export function ResourceView({
       </Card>
 
       {/* Resource-specific control panel, when the page provides one */}
-      {!readOnly && selected.size > 0 && selectionBar
+      {selectable && selected.size > 0 && selectionBar
         ? selectionBar({
             rows: rows.filter((r) => selected.has(r.id)),
             clear: () => setSelected(new Set()),
@@ -590,7 +601,7 @@ export function ResourceView({
         : null}
 
       {/* Bulk action bar — pinned above the bottom bar once something's selected; actions behind the ellipsis */}
-      {!readOnly && selected.size > 0 && !selectionBar ? (
+      {selectable && selected.size > 0 && !selectionBar ? (
         <SelectionDock>
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
             <p className="flex items-center gap-2 text-sm font-medium">
@@ -613,7 +624,7 @@ export function ResourceView({
                   </Button>
                 </MenuTrigger>
                 <MenuContent width="w-52">
-                  {config.tabs ? (
+                  {canBulkMove && config.tabs ? (
                     <>
                       <MenuLabel>Move to</MenuLabel>
                       {config.tabs.options.map((opt) => (
@@ -621,13 +632,15 @@ export function ResourceView({
                           {opt.label}
                         </MenuItem>
                       ))}
-                      <MenuSeparator />
+                      {canDelete ? <MenuSeparator /> : null}
                     </>
                   ) : null}
-                  <MenuItem destructive onSelect={() => setBulkDeleting(true)}>
-                    <Trash2 />
-                    Delete
-                  </MenuItem>
+                  {canDelete ? (
+                    <MenuItem destructive onSelect={() => setBulkDeleting(true)}>
+                      <Trash2 />
+                      Delete
+                    </MenuItem>
+                  ) : null}
                 </MenuContent>
               </Menu>
             </div>

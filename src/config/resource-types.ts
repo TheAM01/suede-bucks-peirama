@@ -56,6 +56,12 @@ export interface ResourceField {
   half?: boolean;
   help?: string;
   defaultValue?: string | number;
+  /**
+   * Not rendered in the create/edit form. For fields that only exist to give
+   * a column its badge labels/colours (e.g. a document status that changes
+   * through its own actions, never by editing).
+   */
+  hidden?: boolean;
 }
 
 export type ColumnType =
@@ -120,6 +126,18 @@ export interface ResourceConfig {
   rowHref?: (row: Row) => string;
   /** when set, renders a segmented "All / …" tab strip above the table that filters rows by a field */
   tabs?: ResourceTabs;
+  /**
+   * Narrow what a writable resource offers (all default to true). E.g.
+   * inventory rows can be edited (reorder points) but not created or deleted;
+   * shipments can be ticked for the page's own control panel but not edited.
+   */
+  capabilities?: {
+    create?: boolean;
+    edit?: boolean;
+    delete?: boolean;
+    /** the generic bulk bar's "Move to" (needs `tabs`) */
+    bulkMove?: boolean;
+  };
 }
 
 /** Resolve the badge variant for a status value from a resource's field options. */

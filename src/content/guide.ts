@@ -15,20 +15,22 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     category: "Getting started",
     everyday: [
       { t: "p", text: "**SuedeBucks** is a store-management system for running a shop online and in person. This installation is **white-labelled** for **Peirama**, a perfume house — so throughout the app, SuedeBucks is the software and Peirama is the store you are managing. It is where you handle the people who buy from you, the things you sell, the orders that come in and go out with couriers, and your physical stores." },
-      { t: "p", text: "The left sidebar groups everything into six areas:" },
+      { t: "p", text: "The left sidebar groups everything into eight areas:" },
       {
         t: "dl",
         items: [
           { term: "Overview", def: "The **Dashboard** (your store at a glance) and **Analytics** (revenue trend, channels, top customers)." },
           { term: "Relations", def: "The people side: **Customers**, **Segments** (groups of customers), and **Discounts**." },
-          { term: "Catalog", def: "What you sell: **Products**, **Collections**, **Inventory**, **Stock Adjustments**, and **Categories**." },
-          { term: "Sales", def: "Orders and everything after the sale: **Orders**, **Draft Orders**, **Returns**, **Dispatch** (courier load sheets), **Return Load Sheets**, **Leads**, **Transactions**, and **Abandoned Checkouts**." },
+          { term: "Catalog", def: "What you sell: **Products**, **Collections**, and **Categories**." },
+          { term: "Inventory", def: "Your stock: **Inventory** (levels per location), **Stock Movements** (the history of every change), **Stock Adjustments**, **Purchase Orders**, **Suppliers**, **Transfers**, and **Stocktakes**." },
+          { term: "Sales", def: "Orders and everything after the sale: **Orders**, **Draft Orders**, **Returns**, **Leads**, **Transactions**, and **Abandoned Checkouts**." },
+          { term: "Logistics", def: "Getting parcels out and stock in: **Shipments** (tracking), **Dispatch** (courier load sheets), **Return Load Sheets**, **Inbound** (deliveries on their way), **COD Reconciliation**, and **Courier Performance**." },
           { term: "Point of Sale", def: "Selling in person: **POS Overview**, **Registers**, **Locations**, and **POS Staff**." },
           { term: "System", def: "**Settings**, **Integrations** (the Shopify connection), and this **Guide**." },
         ],
       },
       { t: "h", text: "Where the data comes from" },
-      { t: "p", text: "Most pages show your **Shopify** store live — products, customers, orders, discounts, collections, inventory, transactions, abandoned checkouts, and locations are read straight from Shopify every time you open them, and many of them can be edited here too. A few things Shopify has no place for are kept in this app's own database instead: order workflow stages, load sheets, stock adjustment documents, returns, leads, segments, registers, and POS staff." },
+      { t: "p", text: "Most pages show your **Shopify** store live — products, customers, orders, discounts, collections, inventory, transactions, abandoned checkouts, and locations are read straight from Shopify every time you open them, and many of them can be edited here too. A few things Shopify has no place for are kept in this app's own database instead: order workflow stages, load sheets, stock adjustments, purchase orders, suppliers, transfers, stocktakes, the stock movement history, reorder points, COD remittances, returns, leads, segments, registers, and POS staff." },
       { t: "callout", tone: "info", title: "Nothing is made up", text: "If Shopify isn't connected, or the database isn't reachable, the affected pages are simply **empty** with a message explaining why — the app never fills in sample or placeholder data." },
       { t: "h", text: "How every page works" },
       { t: "p", text: "Almost every page is built the same way, so once you know one you know them all:" },
@@ -281,27 +283,36 @@ export const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "inventory",
     title: "Inventory",
-    category: "Catalog",
+    category: "Inventory",
     everyday: [
-      { t: "p", text: "The **Inventory** page shows how many units you have of every product variant (every size or version), with its SKU and a stock status. It's view-only — stock changes go through **Stock Adjustments**." },
+      { t: "p", text: "The **Inventory** page shows your stock **per location**: one row for every product variant (every size or version) at every location that stocks it, read live from Shopify. It tells you what's on the shelf, what's already promised to orders, what's on its way, and what needs reordering." },
       {
         t: "dl",
         items: [
           { term: "Item / SKU", def: "The product, plus the variant name if it has one, and its SKU." },
-          { term: "Location", def: "Shown as All locations — the figure is the total across every location." },
-          { term: "On hand / Available", def: "The variant's total stock in Shopify." },
-          { term: "Status", def: "**Out of stock** at 0 or below, **Low stock** at 5 or fewer, otherwise **In stock**." },
+          { term: "Location", def: "The store or warehouse these figures are for. An item stocked in two places has two rows." },
+          { term: "On hand", def: "Units physically there." },
+          { term: "Committed", def: "Units already reserved for orders that haven't shipped." },
+          { term: "Available", def: "What's free to sell: on hand minus committed (Shopify's own figure)." },
+          { term: "On order", def: "Units still to arrive on open **purchase orders** delivering here." },
+          { term: "In transit", def: "Units on **transfers** sent to this location but not received yet." },
+          { term: "Reorder at", def: "Your reorder point: when Available falls to this, the row turns **Low stock**." },
+          { term: "Suggested order", def: "For low and out-of-stock rows: how many to order to get back to your reorder quantity, minus what's already on order or in transit." },
+          { term: "Stock value", def: "On hand × the item's cost in Shopify." },
+          { term: "Status", def: "**Out of stock** at 0 or below, **Low stock** at the reorder point (5 if you haven't set one), otherwise **In stock** — also the tabs." },
         ],
       },
-      { t: "ol", items: ["Open Catalog then Inventory.", "Search by item or SKU.", "Check the Low stock and Out of stock cards for what needs reordering.", "To correct a count, record damage, or book in a delivery, go to **Stock Adjustments**."] },
-      { t: "callout", tone: "info", title: "Totals, not per-location", text: "This page shows each variant's total across all locations. Per-location stock lives in Shopify admin; a stock adjustment still applies to one specific location." },
+      { t: "ol", items: ["Open Inventory then Inventory.", "Use the **Low stock** and **Out of stock** tabs to see what needs attention; search by item, SKU, or location.", "Click a row to set its **Reorder point** and **Reorder quantity** for that location.", "Raise a **purchase order** for the suggested amounts, or a **transfer** if another location has spare stock."] },
+      { t: "callout", tone: "info", title: "Quantities only move through documents", text: "You can't type a new stock figure here. Stock changes through **Purchase Orders** (receiving), **Transfers**, **Stocktakes**, and **Stock Adjustments**, so every change has a reason and shows up in **Stock Movements**. Sales are taken off by Shopify automatically." },
     ],
     technical: [
-      { t: "p", text: "Keyed `inventory`; Shopify-backed and **read-only** (no writer). `readInventory()` reads `productVariants` (first 100): `inventoryQuantity` → `onHand` and `available`, `sku`, product + variant title → `name` (variant omitted when `Default Title`), and `inventoryItem.id` → `inventoryItemId` (used by the stock-adjustment item picker)." },
+      { t: "p", text: "Keyed `inventory`; Shopify-backed. `readInventoryLevels()` (`src/lib/inventory-levels.ts`) pages `productVariants` 100 at a time (up to 30 pages — 3,000 variants — retrying `Throttled` replies with backoff), skipping untracked items, and emits one row per `inventoryItem.inventoryLevels` node. Each row has `quantities(names: [available, on_hand, committed, incoming])` and `unitCost`. The row id is `inventoryItemId:locationId`." },
       { t: "ul", items: [
-        "`location` is the constant `All locations`; `committed` and `reorderPoint` are `0` — per-location `inventoryLevels` aren't read.",
-        "`status` is derived: `out` if `onHand <= 0`, `low` if `<= 5`, else `in_stock`.",
-        "KPIs: SKUs tracked, Units on hand, Low stock, Out of stock.",
+        "Merged on read: `reorderPoint` / `reorderQty` from MongoDB `app_reorder_points` (`_id` = the row id), and `onOrder` / `inTransit` from `openInboundByItem()` in `src/lib/inventory-docs.ts` (remaining units on POs and transfers in `ordered` / `in_transit` / `partial`, keyed by destination).",
+        "`status`: `out` if `available <= 0`, `low` if `available <= reorderPoint` (or `DEFAULT_LOW_STOCK` = 5 when unset), else `in_stock`. `suggested` = `max(0, (reorderQty || threshold × 2) − available − onOrder − inTransit)` for non-in-stock rows. `stockValue` = `max(0, onHand) × unitCost`.",
+        "`SHOPIFY_WRITERS.inventory.update` calls `saveReorderPoint(id, patch)`, the only edit. The config sets `capabilities: { create: false, delete: false, bulkMove: false }`, and `status` is a `hidden` field that exists only to give the badge its colours.",
+        "The `optionsFrom: inventory` pickers (stock adjustments) de-duplicate by value, since one item now has a row per location.",
+        "Requires `read_inventory`, `read_locations`, `read_products`.",
       ] },
     ],
   },
@@ -310,7 +321,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "stock-adjustments",
     title: "Stock Adjustments",
-    category: "Catalog",
+    category: "Inventory",
     everyday: [
       { t: "p", text: "A **stock adjustment** is the paper trail for stock that changed for a reason other than buying or selling — a stocktake found three more units than recorded, a bottle broke, a case expired, or samples went out. Instead of silently editing a number, you record a document that says what changed, where, and why." },
       {
@@ -323,7 +334,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Quantity", def: "Signed units: **+3** adds stock, **−12** removes it." },
         ],
       },
-      { t: "ol", items: ["Open Catalog then Stock Adjustments and click New stock adjustment.", "Pick the item and the facility — both lists come live from Shopify.", "Enter the signed quantity and the reason.", "Leave it Parked to save a draft, or set it Completed to apply the change now.", "To apply a parked draft later, open it and set it to Completed."] },
+      { t: "ol", items: ["Open Inventory then Stock Adjustments and click New stock adjustment.", "Pick the item and the facility — both lists come live from Shopify.", "Enter the signed quantity and the reason.", "Leave it Parked to save a draft, or set it Completed to apply the change now.", "To apply a parked draft later, open it and set it to Completed."] },
       { t: "callout", tone: "warning", title: "Completed means locked", text: "Completing an adjustment changes your live Shopify stock and freezes the document — it can't be edited or deleted afterwards. Made a mistake? Raise a new adjustment in the opposite direction." },
     ],
     technical: [
@@ -334,8 +345,154 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         "Completing posts `inventoryAdjustQuantities` (`name: available`), mapping the reason onto Shopify's reason codes and passing `suedebucks://stock-adjustments/SA-XXXX` as `referenceDocumentUri`.",
         "Completion claims the document atomically (a `status: parked` filtered update) so double-submits can't post twice; if Shopify rejects it, the document stays parked.",
         "`rowLocked` makes completed documents immutable in the UI; the API rejects update and delete too. Needs `write_inventory`.",
+        "Posting goes through `adjustShopifyInventory()` in `src/lib/inventory-ledger.ts`, and a completed adjustment is recorded in the stock movement ledger (`adjustment:SA-XXXX`).",
       ] },
       { t: "callout", tone: "info", title: "Modelled on Unleashed", text: "Mirrors the Unleashed Software adjustments screen: number, status, reason, facility, quantity, dates — with the same parked-to-completed lifecycle." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "stock-movements",
+    title: "Stock Movements",
+    category: "Inventory",
+    everyday: [
+      { t: "p", text: "**Stock Movements** is the history of every stock change, one line per item per location: what changed, by how much, where, when, and which document did it. If a number looks wrong on the Inventory page, this is where you find out why." },
+      {
+        t: "dl",
+        items: [
+          { term: "When / Document", def: "The time, and the document that moved the stock — SA-0001, PO-0003, TR-0002, SC-0001, or an order number. Click a row to open that document." },
+          { term: "Type", def: "**Sale**, **PO receipt**, **Transfer out**, **Transfer in**, **Adjustment**, or **Stocktake** — also the tabs." },
+          { term: "Item / Location", def: "What moved and where. Online sales show **Online orders**, because the shipping location isn't known when the order comes in." },
+          { term: "Change", def: "Units added (positive) or removed (negative)." },
+        ],
+      },
+      { t: "callout", tone: "warning", title: "What it doesn't include", text: "Changes made directly in Shopify admin, and refunds or cancellations, don't appear — only what goes through this app, plus orders as they come in. The **Inventory** page always shows Shopify's real figures." },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `stock-movements`; read-only, from MongoDB `app_stock_movements` via `src/lib/inventory-ledger.ts` (newest 2,000). Shopify has no queryable adjustment history, so this ledger is the app's own audit trail." },
+      { t: "ul", items: [
+        "Every stock-moving step calls `adjustShopifyInventory(changes, reason, referenceDocumentUri)` (one `inventoryAdjustQuantities` on `available`, after `inventoryActivate` for positive deltas at not-yet-stocked locations), then `recordMovements()`.",
+        "Each line has a unique `key` (e.g. `receipt:PO-0003:2:<itemId>`, `sale:<orderId>:<lineItemId>`), written with `$setOnInsert` upserts, so retries never double-count. Ledger writes are best-effort: the Shopify change already happened, so a failure is logged, not thrown.",
+        "Sales come from the `orders/create` webhook via `recordSale()`: line items with a `variant_id`. POS orders carry `location_id`; online orders are filed under `Online orders` with no location.",
+        "`type`: `sale`, `receipt`, `transfer_out`, `transfer_in`, `adjustment`, `stocktake`. `href` points back to the source document (`rowHref`).",
+      ] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "purchase-orders",
+    title: "Purchase Orders",
+    category: "Inventory",
+    everyday: [
+      { t: "p", text: "A **purchase order (PO)** records stock you've ordered from a supplier, from the moment you order it until every unit is on the shelf. Receiving a PO is how bought stock gets into your Shopify inventory." },
+      {
+        t: "dl",
+        items: [
+          { term: "Draft", def: "Being put together — add items, quantities, and unit costs. Nothing is counted yet." },
+          { term: "Ordered", def: "Placed with the supplier. Its units show as **On order** on the Inventory page." },
+          { term: "In transit", def: "The supplier has shipped it — you've added the carrier, tracking number, or ETA." },
+          { term: "Partially received", def: "Some units have arrived and were added to stock; the rest are still expected." },
+          { term: "Received", def: "Everything arrived. **Closed** means you stopped waiting for the rest; **Cancelled** means it was called off before anything arrived." },
+        ],
+      },
+      { t: "ol", items: [
+        "Add the supplier on **Suppliers** if it's new.",
+        "On Purchase Orders, click **New purchase order**, pick the supplier and the location it's delivered to, and save.",
+        "Open it, search for each item to add it, set the quantity and unit cost, and press **Save items**.",
+        "Press **Place order** when you've sent it to the supplier.",
+        "When the supplier ships it, press **Shipping details** to add the carrier, tracking number, and ETA — it shows on **Inbound**.",
+        "When the goods arrive, press **Receive**, enter what actually came for each item, and confirm. Those units are added to that location's stock right away.",
+        "If the rest will never come, press **Close**.",
+      ] },
+      { t: "callout", tone: "info", title: "Receive what you counted", text: "Enter the units that really arrived, not what the invoice says. Anything short stays open, so you can receive it when the next delivery comes." },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `purchase-orders`; MongoDB `app_purchase_orders` via `src/lib/inventory-docs.ts`; the state machine is `DOC_ACTION_FROM` in `src/config/inventory-docs.ts`. `PO-XXXX` numbers come from `app_counters`." },
+      { t: "ul", items: [
+        "Header (`supplierId`, `locationId`, `expectedAt`, `carrier`, `trackingNumber`, `eta`, `notes`) goes through the generic resource API (`createDoc` / `updateDocHeader` / `deleteDoc`). Supplier and location names are resolved server-side. Supplier and location lock once the PO leaves Draft, and only drafts can be deleted (`rowLocked` mirrors this in the list).",
+        "Lines and stages go through `POST /api/inventory-docs/purchase-orders/[id]` `{ action, ... }`: `set_lines` (`[{ inventoryItemId, qty, unitCost? }]`, names and SKUs from Shopify, `unitCost` defaulting to `inventoryItem.unitCost`), `place`, `ship`, `receive` (`[{ inventoryItemId, qty }]`, each ≤ remaining), `close`, `cancel`.",
+        "`receive` posts `+qty` at `locationId` with reason `received` and `referenceDocumentUri` `suedebucks://purchase-orders/PO-XXXX`, then records `receipt` movements and appends to `receipts`. Status becomes `partial` or `received`.",
+        "Each step runs under a `busy` claim (`findOneAndUpdate` on status + `busy`, stale after 2 minutes). If Shopify rejects the change, the document is left untouched. The detail page is `/dashboard/purchase-orders/[id]` (`InventoryDocDetail`).",
+        "Receiving doesn't update the item's cost in Shopify; a line's `unitCost` only values the PO.",
+      ] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "suppliers",
+    title: "Suppliers",
+    category: "Inventory",
+    everyday: [
+      { t: "p", text: "**Suppliers** is your list of the companies you buy stock from — who to call, their usual lead time, and their payment terms. Every purchase order is raised against one." },
+      { t: "ol", items: ["Click **New supplier** and fill in the name and contact details.", "Set the **Lead time** — the usual days from ordering to delivery — so you know when to reorder.", "Click a supplier to edit it."] },
+      { t: "callout", tone: "info", title: "Renaming keeps old POs as they were", text: "A purchase order keeps the supplier name it was created with, so renaming a supplier doesn't rewrite old POs." },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `suppliers`; app-owned in MongoDB (`app_suppliers`, `APP_OWNED_COLLECTIONS`), full CRUD with no special validation. `purchase-orders` reads it through `optionsFrom: { resource: \"suppliers\", valueKey: \"id\", labelKey: \"name\" }`, and `resolveSupplier()` snapshots the name onto the PO." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "transfers",
+    title: "Transfers",
+    category: "Inventory",
+    everyday: [
+      { t: "p", text: "A **transfer** moves stock from one of your locations to another — say, from the warehouse to a store. Stock leaves the first location when you send it and is added to the second when it's received, so nothing is ever counted in both places at once." },
+      {
+        t: "dl",
+        items: [
+          { term: "Draft", def: "Being put together — no stock has moved." },
+          { term: "In transit", def: "Sent. The units are gone from the source and show as **In transit** at the destination." },
+          { term: "Partially received / Received", def: "Some or all units have been counted in at the destination." },
+          { term: "Closed", def: "The rest is never arriving (lost or damaged on the way). It already left the source, so nothing is added back." },
+          { term: "Cancelled", def: "Called off. Cancelling a sent transfer that nothing has been received from puts the stock back at the source." },
+        ],
+      },
+      { t: "ol", items: [
+        "Click **New transfer**, pick **From** and **To**, and save.",
+        "Open it and add the items and quantities — the search shows how many are available at the source.",
+        "Press **Send stock**. The units leave the source right away.",
+        "Optionally add **Shipping details** (carrier, tracking, ETA) so it shows on **Inbound**.",
+        "At the destination, press **Receive** and enter what arrived.",
+      ] },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `transfers`; MongoDB `app_transfers`, same engine as purchase orders (`TR-XXXX`). Header: `fromLocationId`, `toLocationId` (must differ), `carrier`, `trackingNumber`, `eta`, `notes`." },
+      { t: "ul", items: [
+        "`send` (draft → `in_transit`) posts `−qty` at the source with reason `movement_created` and records `transfer_out` movements.",
+        "`receive` posts `+qty` at the destination (`movement_received`, activating the level if needed) and records `transfer_in`.",
+        "`cancel` from `in_transit` (no receipts) posts `+qty` back at the source (`movement_canceled`). `close` from `partial` has no stock effect.",
+        "Remaining units on `in_transit` / `partial` transfers feed the destination's `inTransit` on Inventory and the Inbound board.",
+      ] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "stocktakes",
+    title: "Stocktakes",
+    category: "Inventory",
+    everyday: [
+      { t: "p", text: "A **stocktake** is a count of what's really on the shelf at one location. You enter what you count, and posting it sets each counted item's stock to your count and records the difference." },
+      { t: "ol", items: [
+        "Click **New stocktake** and pick the location.",
+        "Open it and press **Load all items at …** to list everything stocked there, or search to add just the items you're counting.",
+        "Type each count. Leave a box blank to skip that item. Press **Save items** as you go, so nothing is lost.",
+        "When you're done, press **Post counts**. Each counted item's Available is set to your count, and the difference shows as **Net variance**.",
+      ] },
+      { t: "callout", tone: "warning", title: "Post soon after counting", text: "The difference is worked out against Shopify's figure at the moment you post. If items sell between counting and posting, those sales are absorbed into the variance. Count and post when the location is quiet." },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `stocktakes`; MongoDB `app_stocktakes` (`SC-XXXX`). Lines carry `counted` (`null` = skipped) and, once posted, `expected`." },
+      { t: "ul", items: [
+        "`load_location` pages the location's `inventoryLevels` (100 per page), adding every tracked item while keeping existing counts and hand-added lines.",
+        "`post` reads live `available` per item at the location (`readAvailable()`: `inventoryItem.inventoryLevel(locationId:)`, 100 items per query; not stocked counts as 0). It posts `counted − available` per line with reason `cycle_count_available`, records `stocktake` movements for non-zero deltas, and stores `expected`.",
+        "Posted and cancelled stocktakes are locked; `varianceUnits` (Σ counted − expected) is derived on read.",
+      ] },
     ],
   },
 
@@ -390,7 +547,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Booking Failed", def: "Left over from the old courier-booking step — new orders no longer land here. If an order is in this tab, press **Assign consignment** to give it a generated ID." },
           { term: "Finalized", def: "**Print shipping label**, or **Cancel** — cancelling a finalized order needs a reason and releases its consignment." },
           { term: "In Pickup & Packing", def: "The label is printed. **Dispatch** when the courier collects it, reprint the label, or **Cancel pickup** to send it back to Finalized. Dispatch asks which **load sheet** the parcels go on." },
-          { term: "Dispatched", def: "**Add to load sheet** for any order not yet on one. For the **manual Karachi courier** only: **Mark fulfilled** once the rider has delivered it." },
+          { term: "Dispatched", def: "**Add to load sheet** for any order not yet on one. For the **manual Karachi courier**: **Mark fulfilled** once the rider has delivered it. For any courier: **Mark delivered** when the courier confirms delivery, or **Mark returned (RTO)** when the parcel comes back undelivered (also on the **Shipments** page)." },
         ],
       },
       { t: "callout", tone: "info", title: "Modify saves only when you confirm", text: "Modify opens a form with the shipping address and order note. As you type it shows whether the address still looks wrong. Nothing is saved until you press **Save changes** and confirm — then the change is written to the Shopify order." },
@@ -515,9 +672,44 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
   // ==========================================================================
   {
+    id: "shipments",
+    title: "Shipments",
+    category: "Logistics",
+    everyday: [
+      { t: "p", text: "**Shipments** tracks every parcel that has a consignment, from the moment it's booked until it's delivered or comes back. It's the place to chase parcels that are taking too long and to record what happened to each one." },
+      {
+        t: "dl",
+        items: [
+          { term: "Tracking", def: "**Awaiting pickup** (label printed, not handed over yet), **In transit** (dispatched), **Delivered** (or marked fulfilled), **Returned (RTO)** — also the tabs." },
+          { term: "Days out", def: "How long a parcel in transit has been with the courier. Over 5 days counts as **Stuck**." },
+          { term: "COD", def: "The cash the courier collects on delivery (0 if it was paid online)." },
+          { term: "City", def: "Recorded when the consignment is assigned. Older parcels may show none." },
+        ],
+      },
+      { t: "ol", items: [
+        "Check the **In transit** tab and the **Stuck** card every day, and chase the courier on anything stuck.",
+        "When a courier confirms delivery, tick the parcels and press **Mark delivered**. Manual-courier parcels are usually closed with **Mark fulfilled** on the Orders page instead.",
+        "When a parcel comes back undelivered, tick it, press **Mark returned (RTO)**, and give a reason.",
+        "Click any row to open its order.",
+      ] },
+      { t: "callout", tone: "info", title: "Returned stock isn't added back automatically", text: "Marking a parcel returned doesn't change stock. Once you've checked the items, put them back with a **stock adjustment** (reason: Stock received)." },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `shipments`; read model over `app_order_ops` docs with a `consignmentId` (`listConsignedOrders()` → `listShipments()` in `src/lib/logistics.ts`, newest 5,000). The route returns `readOnly: false` so rows are selectable; the config turns off create, edit, delete, and bulk move." },
+      { t: "ul", items: [
+        "`stage` = `trackingStage(opsStatus)` (`src/config/logistics.ts`): `finalized` / `in_pickup_packing` → `awaiting_pickup`, `dispatched` → `in_transit`, `fulfilled` / `delivered` → `delivered`, `returned` → `returned`.",
+        "`daysInTransit` is measured from `dispatchedAt`; `stuck` when it exceeds `SHIPMENT_STUCK_DAYS` (5). `deliveryDays` runs from `dispatchedAt` to `deliveredAt` (or `fulfilledAt`).",
+        "The panel runs the order workflow actions `mark_delivered` (`dispatched` → `delivered`, stamps `deliveredAt`) and `mark_returned` (`dispatched` / `fulfilled` / `delivered` → `returned`, stamps `returnedAt`, reason in history) through `POST /api/orders/[id]/actions`. Both are also on the Orders control panel.",
+        "`assign_consignment` snapshots the shipping `city` onto the ops doc for this board and the city scorecard.",
+      ] },
+    ],
+  },
+
+  // ==========================================================================
+  {
     id: "dispatch",
     title: "Dispatch",
-    category: "Sales",
+    category: "Logistics",
     everyday: [
       { t: "p", text: "The **Dispatch** page is your courier handover book. A **load sheet** is the list you hand a courier when their rider collects a batch: which parcels (consignment IDs), how many, their combined value, and the cash on delivery (**COD**) the rider has to collect. It's proof of what left with them, and the COD total is what the courier owes you back." },
       { t: "p", text: "Sheets move through three stages, shown as tabs: **Draft** (still being loaded), **Posted** (handed to the courier), and **Archived** (settled, kept for records)." },
@@ -530,7 +722,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
           { term: "Courier / Location", def: "Which courier is collecting, and where the parcels leave from." },
           { term: "Consignments", def: "Every consignment ID on the sheet." },
           { term: "Status", def: "**Draft**, **Posted**, or **Archived** — also the tab." },
-          { term: "Reconciliation", def: "**Pending** or **Reconciled** — whether the courier has paid you the COD it collected." },
+          { term: "Reconciliation", def: "**Pending** or **Reconciled** — whether the courier has paid you the COD it collected. Recording a payment on **COD Reconciliation** and ticking the sheets it covers marks them Reconciled for you." },
           { term: "Total Shipments / Total Amount / COD Amount", def: "Parcel count, combined order value, and cash to collect — added up automatically as parcels go on." },
           { term: "Weight", def: "Entered by hand if you track it." },
           { term: "Date Created / Date Posted", def: "When the sheet was started, and when it was handed over." },
@@ -563,14 +755,93 @@ export const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "return-load-sheets",
     title: "Return Load Sheets",
-    category: "Sales",
+    category: "Logistics",
     everyday: [
       { t: "p", text: "**Return Load Sheets** is Dispatch's mirror image — instead of the parcels going out with a courier, it records the returns a courier hands back to you. Same fields, opposite direction: Draft while you're expecting it, Posted once the courier hands it over, Archived once it's settled." },
-      { t: "ol", items: ["Open Sales then Return Load Sheets.", "Click New load sheet and pick the courier and the location it's coming into.", "Fill in the shipment count, amounts, and weight.", "Set it to Posted once the courier has handed the returns over — this stamps Date Posted.", "When any COD owed on undelivered orders is settled, set Reconciliation to Reconciled.", "Archive old settled sheets."] },
+      { t: "ol", items: ["Open Logistics then Return Load Sheets.", "Click New load sheet and pick the courier and the location it's coming into.", "Fill in the shipment count, amounts, and weight.", "Set it to Posted once the courier has handed the returns over — this stamps Date Posted.", "When any COD owed on undelivered orders is settled, set Reconciliation to Reconciled.", "Archive old settled sheets."] },
       { t: "callout", tone: "info", title: "Filled in by hand", text: "Unlike outgoing sheets, return sheets aren't linked to orders or scanning — every figure is entered by hand." },
     ],
     technical: [
       { t: "p", text: "Keyed `return-load-sheets`; same `src/lib/dispatch.ts` module as `dispatch` with its own collection (`app_return_load_sheets`), counter id, and `RL` reference prefix. Same fields, tabs, and one-way `datePosted` stamp; no `consignmentIds`, no order linkage, no scanner." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "inbound",
+    title: "Inbound",
+    category: "Logistics",
+    everyday: [
+      { t: "p", text: "**Inbound** is everything on its way to you: purchase orders your suppliers haven't fully delivered, and transfers between your locations that haven't been fully received. It's sorted by due date, so the next delivery is at the top." },
+      {
+        t: "dl",
+        items: [
+          { term: "Document / From / To", def: "The PO or transfer, where it's coming from (supplier or location), and where it's going." },
+          { term: "Carrier / Tracking", def: "As entered with **Shipping details** on the document." },
+          { term: "Due / Timing", def: "The ETA, or the PO's expected-by date. **Overdue**, **Due today**, **Upcoming**, or **No date** — also the tabs." },
+          { term: "Units to come", def: "Units not received yet." },
+        ],
+      },
+      { t: "p", text: "Click a row to open the document and receive it." },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `inbound`; read-only. `listInbound()` in `src/lib/inventory-docs.ts` unions purchase orders and transfers in `OPEN_INBOUND_STATUSES` (`ordered`, `in_transit`, `partial`). `due` is `eta || expectedAt`, and `timing` compares it with today (UTC date). Rows are sorted by `due` (undated last), and `rowHref` goes to `/dashboard/[kind]/[docId]`." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "cod-remittances",
+    title: "COD Reconciliation",
+    category: "Logistics",
+    everyday: [
+      { t: "p", text: "Couriers collect cash on delivery (**COD**) from your customers and pay it over to you later. This page shows how much each courier has collected, how much they've paid, and what they still owe." },
+      {
+        t: "dl",
+        items: [
+          { term: "COD in the field", def: "Cash on parcels still out for delivery — not owed yet." },
+          { term: "COD collected", def: "Cash on parcels marked delivered (or fulfilled) — the courier has it." },
+          { term: "Remitted", def: "What you've recorded the courier paying you." },
+          { term: "Outstanding", def: "Collected minus remitted: what the courier still owes. A negative figure usually means a payment was entered twice, or a delivered parcel wasn't marked delivered." },
+        ],
+      },
+      { t: "ol", items: [
+        "When a courier pays you, click **New remittance**.",
+        "Pick the courier, enter the amount, the date, and the bank or cheque reference.",
+        "Under **Settles load sheets**, tick the load sheets this payment covers — they're marked **COD reconciled** on the Dispatch page when you save.",
+        "Check **Outstanding** in the Courier balances table regularly, and chase couriers who are behind.",
+      ] },
+    ],
+    technical: [
+      { t: "p", text: "The page is `CodView`: a balances table from `codByCourier(shipments, remittances)` (`src/config/logistics.ts`, computed client-side, so it matches the Shipments board) above a `ResourceView` of `cod-remittances`." },
+      { t: "ul", items: [
+        "`cod-remittances` is app-owned (`app_cod_remittances`): `courier` (`optionsFrom` shipments' distinct `courier`), `amount`, `receivedAt`, `reference`, `loadSheetIds` (multiselect over `dispatch`), `notes`.",
+        "Create and update are special-cased in the resource routes: `validateRemittance()` requires a courier and an amount above 0, then `reconcileLoadSheets(loadSheetIds)` sets `reconciliation: reconciled` on those `app_dispatch_load_sheets`. Un-ticking a sheet later doesn't un-reconcile it.",
+        "Collected counts `codAmount` (the Create Package snapshot) on `delivered`-stage shipments; in the field counts `in_transit`.",
+      ] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "courier-performance",
+    title: "Courier Performance",
+    category: "Logistics",
+    everyday: [
+      { t: "p", text: "**Courier Performance** scores each courier, and each destination city, on how reliably parcels get delivered. Use it to decide which courier to use where, and to spot cities with a lot of returns." },
+      {
+        t: "dl",
+        items: [
+          { term: "Delivery rate / RTO rate", def: "Of the parcels that finished — delivered or returned — the share that were delivered, or came back. Parcels still in transit aren't counted." },
+          { term: "Avg. days", def: "Average days from dispatch to delivery." },
+          { term: "Stuck", def: "Parcels in transit for more than 5 days." },
+          { term: "COD collected", def: "Cash on the parcels it delivered." },
+        ],
+      },
+      { t: "callout", tone: "info", title: "Only as good as the tracking", text: "These figures come from the **Shipments** board, so keep marking parcels delivered or returned there. Parcels nobody marks stay In transit and eventually show as Stuck." },
+    ],
+    technical: [
+      { t: "p", text: "`CourierPerformanceView` reads `useResource(\"shipments\")` and calls `performanceBy(rows, groupBy)` (`src/config/logistics.ts`) three times: overall, by `courier`, by `city`. Only `in_transit` / `delivered` / `returned` stages count. Rates are over `delivered + returned`; `avgDeliveryDays` averages `deliveryDays` where known. RTO rates of 20% or more are highlighted. Nav-only page (no resource config)." },
     ],
   },
 
@@ -894,7 +1165,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         items: [
           { term: "orders.opsStatus", def: "`exception`, `pending_cc`, `active`, `packaged`, `booking_failed`, `finalized`, `in_pickup_packing`, `dispatched`, `fulfilled`, `delivered`, `returned`, `canceled`, `draft`, `duplicate`, `on_hold` (`ORDER_STATUS_OPTIONS`). Default `active`." },
           { term: "orders.payment / fulfillment / channel", def: "`paid` / `pending` / `refunded`; `fulfilled` / `partial` / `unfulfilled`; `online` / `pos`." },
-          { term: "OrderAction", def: "`modify`, `move_active`, `move_exception`, `discard`, `create_package`, `unpackage`, `assign_consignment`, `print_label`, `dispatch`, `add_to_load_sheet`, `mark_fulfilled`, `cancel` — allowed-from table in `ACTION_FROM`." },
+          { term: "OrderAction", def: "`modify`, `move_active`, `move_exception`, `discard`, `create_package`, `unpackage`, `assign_consignment`, `print_label`, `dispatch`, `add_to_load_sheet`, `mark_fulfilled`, `mark_delivered`, `mark_returned`, `cancel` — allowed-from table in `ACTION_FROM`." },
           { term: "products.status", def: "`active`, `draft`, `archived`." },
           { term: "customers.status", def: "`active`, `invited`, `disabled` (mapped from Shopify `state`)." },
           { term: "inventory.status", def: "`in_stock`, `low` (≤ 5), `out` (≤ 0) — derived." },

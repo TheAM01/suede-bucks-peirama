@@ -15,6 +15,8 @@ export const APP_OWNED_COLLECTIONS: Record<string, string> = {
   segments: "app_segments",
   returns: "app_returns",
   leads: "app_leads",
+  suppliers: "app_suppliers",
+  "cod-remittances": "app_cod_remittances",
 };
 
 export function isAppOwned(resource: string): boolean {

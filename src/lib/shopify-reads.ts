@@ -1,5 +1,6 @@
 import "server-only";
 import { shopifyQuery } from "./shopify-client";
+import { readInventoryLevels } from "./inventory-levels";
 import type { Row } from "@/config/resource-types";
 
 /**
@@ -200,41 +201,6 @@ async function readCollections(): Promise<ShopifyReadResult> {
   return { rows };
 }
 
-async function readInventory(): Promise<ShopifyReadResult> {
-  const q = `{
-    productVariants(first: 100) {
-      nodes {
-        id sku title inventoryQuantity
-        inventoryItem { id }
-        product { title }
-      }
-    }
-  }`;
-  const res = await shopifyQuery(q);
-  if (!res.ok) return { rows: [], error: res.error };
-  const rows = nodes(res.data, "productVariants").map((v): Row => {
-    const onHand = num(v.inventoryQuantity);
-    const productTitle = str(get(v, "product", "title"));
-    const variantTitle = str(v.title);
-    return {
-      id: gid(v.id),
-      inventoryItemId: gid(get(v, "inventoryItem", "id")),
-      name:
-        variantTitle && variantTitle !== "Default Title"
-          ? `${productTitle} — ${variantTitle}`
-          : productTitle,
-      sku: str(v.sku),
-      location: "All locations",
-      onHand,
-      committed: 0,
-      available: onHand,
-      reorderPoint: 0,
-      status: onHand <= 0 ? "out" : onHand <= 5 ? "low" : "in_stock",
-    };
-  });
-  return { rows };
-}
-
 /** Categories aren't a Shopify entity — derive from product types. */
 async function readCategories(): Promise<ShopifyReadResult> {
   const q = `{ products(first: 250) { nodes { productType } } }`;
@@ -419,7 +385,8 @@ export const SHOPIFY_READERS: Record<string, () => Promise<ShopifyReadResult>> =
   customers: readCustomers,
   orders: readOrders,
   collections: readCollections,
-  inventory: readInventory,
+  // One row per variant × location, with reorder points and inbound merged in.
+  inventory: readInventoryLevels,
   categories: readCategories,
   "draft-orders": readDraftOrders,
   discounts: readDiscounts,

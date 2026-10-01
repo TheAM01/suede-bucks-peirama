@@ -6,6 +6,9 @@ import { isAppOwned, updateAppRow, deleteAppRow } from "@/lib/app-data";
 import { updateAdjustment, deleteAdjustment } from "@/lib/stock-adjustments";
 import { updateLoadSheet, deleteLoadSheet, type LoadSheetResource } from "@/lib/dispatch";
 import { setOrderOps, deleteOrderOps } from "@/lib/order-ops";
+import { deleteDoc, updateDocHeader } from "@/lib/inventory-docs";
+import { reconcileLoadSheets, validateRemittance } from "@/lib/logistics";
+import { isInventoryDocKind } from "@/config/inventory-docs";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +43,21 @@ export async function PATCH(
   if (g.resource === "dispatch" || g.resource === "return-load-sheets") {
     const { row, error } = await updateLoadSheet(g.resource as LoadSheetResource, g.id, body);
     if (error) return NextResponse.json({ error }, { status: 422 });
+    return NextResponse.json({ ok: true, row });
+  }
+
+  if (isInventoryDocKind(g.resource)) {
+    const { row, error } = await updateDocHeader(g.resource, g.id, body);
+    if (error) return NextResponse.json({ error }, { status: 422 });
+    return NextResponse.json({ ok: true, row });
+  }
+
+  if (g.resource === "cod-remittances") {
+    const invalid = validateRemittance(body);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 422 });
+    const { row, error } = await updateAppRow(g.resource, g.id, body);
+    if (error) return NextResponse.json({ error }, { status: 503 });
+    await reconcileLoadSheets(body.loadSheetIds);
     return NextResponse.json({ ok: true, row });
   }
 
@@ -89,6 +107,12 @@ export async function DELETE(
 
   if (g.resource === "dispatch" || g.resource === "return-load-sheets") {
     const { error } = await deleteLoadSheet(g.resource as LoadSheetResource, g.id);
+    if (error) return NextResponse.json({ error }, { status: 422 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (isInventoryDocKind(g.resource)) {
+    const { error } = await deleteDoc(g.resource, g.id);
     if (error) return NextResponse.json({ error }, { status: 422 });
     return NextResponse.json({ ok: true });
   }

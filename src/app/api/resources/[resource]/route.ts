@@ -8,14 +8,21 @@ import { isAppOwned, listAppRows, createAppRow } from "@/lib/app-data";
 import { listAdjustments, createAdjustment } from "@/lib/stock-adjustments";
 import { listLoadSheets, createLoadSheet, type LoadSheetResource } from "@/lib/dispatch";
 import { attachOrderOps } from "@/lib/order-ops";
+import { listMovements } from "@/lib/inventory-ledger";
+import { createDoc, listDocs, listInbound } from "@/lib/inventory-docs";
+import { listShipments, reconcileLoadSheets, validateRemittance } from "@/lib/logistics";
+import { isInventoryDocKind } from "@/config/inventory-docs";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Resource data API.
- * - App-owned resources (registers, pos-staff, segments, returns, leads):
- *   MongoDB, full CRUD. Stock adjustments and load sheets (dispatch,
- *   return-load-sheets) are MongoDB too, through their own modules.
+ * - App-owned resources (registers, pos-staff, segments, returns, leads,
+ *   suppliers, cod-remittances): MongoDB, full CRUD. Stock adjustments, load
+ *   sheets (dispatch, return-load-sheets), and inventory documents
+ *   (purchase-orders, transfers, stocktakes) are MongoDB too, through their
+ *   own modules. Read models: stock-movements (the ledger), inbound (open POs
+ *   and transfers), shipments (consigned orders).
  * - Shopify-backed resources: live Admin API reads when connected, EMPTY when
  *   not; writes go through the SHOPIFY_WRITERS mutation registry. Resources
  *   with no writer (transactions, abandoned, categories, inventory,
@@ -42,6 +49,23 @@ export async function GET(
 
   if (resource === "dispatch" || resource === "return-load-sheets") {
     const { rows, error } = await listLoadSheets(resource as LoadSheetResource);
+    return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
+  }
+
+  if (isInventoryDocKind(resource)) {
+    const { rows, error } = await listDocs(resource);
+    return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
+  }
+
+  if (resource === "stock-movements" || resource === "inbound") {
+    const { rows, error } = resource === "inbound" ? await listInbound() : await listMovements();
+    return NextResponse.json({ rows, source: "db", readOnly: true, error: error ?? null });
+  }
+
+  // Writable only so rows can be ticked for the Shipments control panel —
+  // its config turns off create / edit / delete.
+  if (resource === "shipments") {
+    const { rows, error } = await listShipments();
     return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
   }
 
@@ -108,6 +132,23 @@ export async function POST(
     if (error || !row) {
       return NextResponse.json({ error: error ?? "Create failed." }, { status: 422 });
     }
+    return NextResponse.json({ row });
+  }
+
+  if (isInventoryDocKind(resource)) {
+    const { row, error } = await createDoc(resource, body);
+    if (error || !row) {
+      return NextResponse.json({ error: error ?? "Create failed." }, { status: 422 });
+    }
+    return NextResponse.json({ row });
+  }
+
+  if (resource === "cod-remittances") {
+    const invalid = validateRemittance(body);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 422 });
+    const { row, error } = await createAppRow(resource, body);
+    if (error) return NextResponse.json({ error }, { status: 503 });
+    await reconcileLoadSheets(body.loadSheetIds);
     return NextResponse.json({ row });
   }
 

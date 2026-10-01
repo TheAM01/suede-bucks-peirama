@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "crypto";
 import { getDb, isDbConfigured } from "./db";
 import { APP_OWNED_COLLECTIONS } from "./app-data";
+import { INVENTORY_DOC_COLLECTIONS } from "./inventory-docs";
 
 /**
  * Shopify's three mandatory GDPR compliance webhooks
@@ -50,6 +51,10 @@ const REDACT_ON_UNINSTALL = [
   "app_dispatch_load_sheets",
   "app_return_load_sheets",
   "app_order_ops",
+  ...INVENTORY_DOC_COLLECTIONS,
+  "app_stock_movements",
+  "app_reorder_points",
+  "app_settings",
   // Retired pages (Packages, Shipments) — their old documents are still store data.
   "app_packages",
   "app_shipments",

@@ -50,6 +50,8 @@ export type OrderAction =
   | "dispatch"
   | "add_to_load_sheet"
   | "mark_fulfilled"
+  | "mark_delivered"
+  | "mark_returned"
   | "cancel";
 
 export const ACTION_FROM: Record<OrderAction, readonly string[]> = {
@@ -65,6 +67,10 @@ export const ACTION_FROM: Record<OrderAction, readonly string[]> = {
   /** a dispatched order that isn't on any load sheet yet (dispatched before sheets were automatic) */
   add_to_load_sheet: ["dispatched"],
   mark_fulfilled: ["dispatched"],
+  /** shipment tracking: the courier confirmed delivery (API couriers; manual ones use Mark fulfilled) */
+  mark_delivered: ["dispatched"],
+  /** shipment tracking: the parcel came back undelivered (RTO) */
+  mark_returned: ["dispatched", "fulfilled", "delivered"],
   cancel: ["finalized", "in_pickup_packing"],
 };
 
@@ -80,6 +86,8 @@ export const ACTION_LABEL: Record<OrderAction, string> = {
   dispatch: "Dispatch",
   add_to_load_sheet: "Add to load sheet",
   mark_fulfilled: "Mark fulfilled",
+  mark_delivered: "Mark delivered",
+  mark_returned: "Mark returned (RTO)",
   cancel: "Cancel",
 };
 

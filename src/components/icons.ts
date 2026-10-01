@@ -108,4 +108,12 @@ export {
   QrCodeIcon as QrCode,
   PrinterIcon as Printer,
   ClockIcon as Clock,
+  ArrowsRightLeftIcon as ArrowLeftRight,
+  ClipboardDocumentListIcon as ClipboardList,
+  ClipboardDocumentCheckIcon as ClipboardCheck,
+  BanknotesIcon as Banknote,
+  ChartBarSquareIcon as Gauge,
+  InboxArrowDownIcon as Inbox,
+  QueueListIcon as History,
+  MapPinIcon as Navigation,
 } from "@heroicons/react/24/outline";
