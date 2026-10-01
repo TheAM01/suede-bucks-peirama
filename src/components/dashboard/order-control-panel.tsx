@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import {
-  AlertCircle,
   AlertTriangle,
   ArrowRight,
-  ChevronDown,
+  MoreHorizontal,
   Package,
   Pencil,
   Printer,
@@ -40,7 +39,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Drawer } from "@/components/ui/drawer";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import { SelectionDock } from "./selection-dock";
 import { LoadingState } from "@/components/ui/spinner";
 import type { IconType } from "@/components/icons";
 
@@ -126,8 +126,9 @@ const num = (rows: Row[], noun = "order") => `${rows.length} ${rows.length === 1
  * ACTION_FROM in src/config/order-workflow.ts); the server re-checks every
  * transition. Mixed selections (orders from different tabs) get no workflow
  * actions. The generic bulk actions — Move to (a manual status override that
- * skips the workflow's side effects) and Delete (permanent, in Shopify) — are
- * always offered, whatever the selection.
+ * skips the workflow's side effects) and Delete (permanent, in Shopify) — sit
+ * behind the ellipsis and are always offered, whatever the selection. The bar
+ * is pinned to the viewport bottom (SelectionDock).
  */
 export function OrderControlPanel({
   ctx,
@@ -271,79 +272,76 @@ export function OrderControlPanel({
     <>
       {/* Phones: count + Clear on one line, actions in a single sideways-scrolling row
           (a wrapped bar would cover most of the table). sm+: one wrapping row. */}
-      <div className="sticky bottom-8 z-10 space-y-2 rounded-lg border border-border bg-card px-3 py-2.5 shadow-md sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:space-y-0 sm:px-4 sm:py-3">
-        <div className="flex min-w-0 items-center gap-2 text-sm">
-          <span className="font-medium">{num(rows)} selected</span>
-          {status ? <Badge variant="outline">{statusLabel(status)}</Badge> : null}
-          {busy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
-          <Button variant="ghost" size="sm" className="ml-auto sm:hidden" onClick={clear} disabled={busy}>
-            Clear
-          </Button>
-        </div>
-        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-          {!status ? (
-            <span className="text-sm text-muted-foreground">
-              These orders are in different tabs — select orders from one tab to act on them.
-            </span>
-          ) : actions.length === 0 ? (
-            <span className="text-sm text-muted-foreground">
-              No workflow actions for orders in {statusLabel(status)}.
-            </span>
-          ) : (
-            actions.map((a) => {
-              const Icon = ICON[a];
-              const label =
-                a === "cancel" && status === "in_pickup_packing"
-                  ? "Cancel pickup"
-                  : a === "move_active" && status === "pending_cc"
-                    ? "Deposit cleared → Active"
-                    : ACTION_LABEL[a];
-              return (
-                <Button
-                  key={a}
-                  size="sm"
-                  className="shrink-0"
-                  variant={PRIMARY.includes(a) ? "default" : DESTRUCTIVE.includes(a) ? "destructive" : "outline"}
-                  onClick={() => onAction(a)}
-                  disabled={busy}
-                >
-                  {Icon ? <Icon /> : null}
-                  {label}
+      <SelectionDock>
+        <div className="space-y-2 rounded-lg border border-border bg-card px-3 py-2.5 shadow-md sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:space-y-0 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2 text-sm">
+            <span className="font-medium">{num(rows)} selected</span>
+            {status ? <Badge variant="outline">{statusLabel(status)}</Badge> : null}
+            {busy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+            <Button variant="ghost" size="sm" className="ml-auto sm:hidden" onClick={clear} disabled={busy}>
+              Clear
+            </Button>
+          </div>
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+            {!status ? (
+              <span className="text-sm text-muted-foreground">
+                These orders are in different tabs — select orders from one tab to act on them.
+              </span>
+            ) : actions.length === 0 ? (
+              <span className="text-sm text-muted-foreground">
+                No workflow actions for orders in {statusLabel(status)}.
+              </span>
+            ) : (
+              actions.map((a) => {
+                const Icon = ICON[a];
+                const label =
+                  a === "cancel" && status === "in_pickup_packing"
+                    ? "Cancel pickup"
+                    : a === "move_active" && status === "pending_cc"
+                      ? "Deposit cleared → Active"
+                      : ACTION_LABEL[a];
+                return (
+                  <Button
+                    key={a}
+                    size="sm"
+                    className="shrink-0"
+                    variant={PRIMARY.includes(a) ? "default" : DESTRUCTIVE.includes(a) ? "destructive" : "outline"}
+                    onClick={() => onAction(a)}
+                    disabled={busy}
+                  >
+                    {Icon ? <Icon /> : null}
+                    {label}
+                  </Button>
+                );
+              })
+            )}
+            {/* Generic bulk actions — always behind the ellipsis, whatever the selection. */}
+            <Menu>
+              <MenuTrigger>
+                <Button variant="outline" size="icon-sm" className="shrink-0" disabled={busy} aria-label="More bulk actions">
+                  <MoreHorizontal />
                 </Button>
-              );
-            })
-          )}
-          <Menu>
-            <MenuTrigger>
-              <Button variant="outline" size="sm" className="shrink-0" disabled={busy}>
-                Move to
-                <ChevronDown className="size-3.5" />
-              </Button>
-            </MenuTrigger>
-            <MenuContent width="w-52">
-              <MenuLabel>Manual override</MenuLabel>
-              {ORDER_STATUS_OPTIONS.filter((o) => o.value !== status).map((o) => (
-                <MenuItem key={o.value} onSelect={() => void moveTo(o.value)}>
-                  {o.label}
+              </MenuTrigger>
+              <MenuContent width="w-56">
+                <MenuLabel>Move to (manual override)</MenuLabel>
+                {ORDER_STATUS_OPTIONS.filter((o) => o.value !== status).map((o) => (
+                  <MenuItem key={o.value} onSelect={() => void moveTo(o.value)}>
+                    {o.label}
+                  </MenuItem>
+                ))}
+                <MenuSeparator />
+                <MenuItem destructive onSelect={() => setDialog("delete")}>
+                  <Trash2 />
+                  Delete permanently
                 </MenuItem>
-              ))}
-            </MenuContent>
-          </Menu>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="shrink-0"
-            onClick={() => setDialog("delete")}
-            disabled={busy}
-          >
-            <Trash2 />
-            Delete
-          </Button>
-          <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={clear} disabled={busy}>
-            Clear
-          </Button>
+              </MenuContent>
+            </Menu>
+            <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={clear} disabled={busy}>
+              Clear
+            </Button>
+          </div>
         </div>
-      </div>
+      </SelectionDock>
 
       {dialog === "modify" && rows[0] ? (
         <ModifyDrawer
@@ -587,6 +585,7 @@ function ReasonDialog({
   );
 }
 
+/** Pick the courier; the consignment ID is generated server-side from the schema chosen in Settings. */
 function ConsignmentDialog({
   rows,
   onClose,
@@ -596,82 +595,38 @@ function ConsignmentDialog({
   onClose: () => void;
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
-  const [courier, setCourier] = React.useState<string>(defaultCourierFor(rows[0]?.city));
-  const meta = COURIERS.find((c) => c.value === courier);
-  const [useApi, setUseApi] = React.useState<boolean>(Boolean(meta?.api));
-  const [consignmentId, setConsignmentId] = React.useState("");
+  const [courier, setCourier] = React.useState<string>("auto");
   const single = rows.length === 1;
-  const manual = !useApi || !meta?.api;
 
   return (
     <Dialog
       open
       onClose={onClose}
       title={`Assign consignment — ${single ? String(rows[0].number) : num(rows)}`}
-      description="Out-of-city parcels book with Insta; Karachi deliveries use the manual courier with a hand-entered consignment ID."
+      description="Each order gets a consignment ID generated from the schema chosen in Settings."
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            disabled={manual && (!single || !consignmentId.trim())}
-            onClick={() =>
-              onSubmit(manual ? { courier, consignmentId: consignmentId.trim() } : { courier, useApi: true })
-            }
-          >
-            {manual ? "Assign" : "Book with courier"}
-          </Button>
+          <Button onClick={() => onSubmit({ courier })}>Assign</Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="courier">Courier</Label>
-          <Select
-            id="courier"
-            value={courier}
-            onChange={(e) => {
-              setCourier(e.target.value);
-              setUseApi(Boolean(COURIERS.find((c) => c.value === e.target.value)?.api));
-            }}
-          >
-            {COURIERS.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        {meta?.api ? (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 accent-primary"
-              checked={useApi}
-              onChange={(e) => setUseApi(e.target.checked)}
-            />
-            Book through {courier}&apos;s API (uncheck to enter an ID you booked yourself)
-          </label>
-        ) : null}
-        {manual ? (
-          single ? (
-            <div className="space-y-2">
-              <Label htmlFor="consignment-id">Consignment ID</Label>
-              <Input
-                id="consignment-id"
-                value={consignmentId}
-                onChange={(e) => setConsignmentId(e.target.value)}
-                placeholder="e.g. KHI-000123"
-                autoFocus
-              />
-            </div>
-          ) : (
-            <p className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm">
-              <AlertCircle className="mt-0.5 size-4 shrink-0 text-warning" />
-              Manual consignment IDs are entered one order at a time — select a single order.
-            </p>
-          )
+      <div className="space-y-2">
+        <Label htmlFor="courier">Courier</Label>
+        <Select id="courier" value={courier} onChange={(e) => setCourier(e.target.value)}>
+          <option value="auto">Auto — by city (Karachi → manual, else Insta)</option>
+          {COURIERS.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </Select>
+        {courier === "auto" && single ? (
+          <p className="text-xs text-muted-foreground">
+            {String(rows[0].city || "No city")} → {defaultCourierFor(rows[0].city)}
+          </p>
         ) : null}
       </div>
     </Dialog>

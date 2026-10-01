@@ -16,7 +16,7 @@ import {
   Plug,
   Lock,
   ArrowRight,
-  ChevronDown,
+  Loader2,
 } from "@/components/icons";
 import type {
   ResourceColumn,
@@ -49,8 +49,11 @@ import {
   Menu,
   MenuContent,
   MenuItem,
+  MenuLabel,
+  MenuSeparator,
   MenuTrigger,
 } from "@/components/ui/menu";
+import { SelectionDock } from "./selection-dock";
 import {
   ResourceForm,
   RESOURCE_FORM_ID,
@@ -586,49 +589,50 @@ export function ResourceView({
           })
         : null}
 
-      {/* Bulk action bar — sticky just above the bottom bar, shown once something's selected */}
+      {/* Bulk action bar — pinned above the bottom bar once something's selected; actions behind the ellipsis */}
       {!readOnly && selected.size > 0 && !selectionBar ? (
-        <div className="sticky bottom-8 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
-          <p className="text-sm font-medium">
-            {selected.size} {selected.size === 1 ? "record" : "records"} selected
-          </p>
-          <div className="flex items-center gap-2">
-            {config.tabs ? (
+        <SelectionDock>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              {selected.size} {selected.size === 1 ? "record" : "records"} selected
+              {bulkBusy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelected(new Set())}
+                disabled={bulkBusy}
+              >
+                Clear
+              </Button>
               <Menu>
                 <MenuTrigger>
-                  <Button variant="outline" size="sm" disabled={bulkBusy}>
-                    Move to
-                    <ChevronDown className="size-3.5" />
+                  <Button variant="outline" size="icon-sm" disabled={bulkBusy} aria-label="Bulk actions">
+                    <MoreHorizontal />
                   </Button>
                 </MenuTrigger>
-                <MenuContent width="w-48">
-                  {config.tabs.options.map((opt) => (
-                    <MenuItem key={opt.value} onSelect={() => handleBulkMove(opt.value)}>
-                      {opt.label}
-                    </MenuItem>
-                  ))}
+                <MenuContent width="w-52">
+                  {config.tabs ? (
+                    <>
+                      <MenuLabel>Move to</MenuLabel>
+                      {config.tabs.options.map((opt) => (
+                        <MenuItem key={opt.value} onSelect={() => handleBulkMove(opt.value)}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
+                      <MenuSeparator />
+                    </>
+                  ) : null}
+                  <MenuItem destructive onSelect={() => setBulkDeleting(true)}>
+                    <Trash2 />
+                    Delete
+                  </MenuItem>
                 </MenuContent>
               </Menu>
-            ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelected(new Set())}
-              disabled={bulkBusy}
-            >
-              Clear
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setBulkDeleting(true)}
-              disabled={bulkBusy}
-            >
-              <Trash2 />
-              Delete
-            </Button>
+            </div>
           </div>
-        </div>
+        </SelectionDock>
       ) : null}
 
       {/* Create / edit drawer (app-owned resources only) */}

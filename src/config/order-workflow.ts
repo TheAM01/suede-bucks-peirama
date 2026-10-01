@@ -94,10 +94,10 @@ export function canRun(action: OrderAction, status: unknown, courier?: unknown):
   return ACTION_FROM[action].includes(String(status));
 }
 
-/** Couriers a consignment can be booked with. `api` couriers can be booked automatically. */
+/** Couriers a consignment can be assigned to. The ID itself is generated (src/config/consignment-schema.ts). */
 export const COURIERS = [
-  { value: "Insta", label: "Insta (out of city)", api: true },
-  { value: MANUAL_COURIER, label: "Manual courier (Karachi)", api: false },
+  { value: "Insta", label: "Insta (out of city)" },
+  { value: MANUAL_COURIER, label: "Manual courier (Karachi)" },
 ] as const;
 
 /** Karachi deliveries go with the in-house manual courier; everything else books with Insta. */

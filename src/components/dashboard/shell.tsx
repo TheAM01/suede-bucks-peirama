@@ -26,7 +26,11 @@ export function DashboardShell({
       <CurrencyProvider>
         <StoreProvider>
           <DashboardUIProvider>
-            <div className="min-h-screen bg-background">
+            {/* --content-left: where the content column starts at lg+, for fixed overlays (SelectionDock). */}
+            <div
+              className="min-h-screen bg-background"
+              style={{ "--content-left": collapsed ? "72px" : "16rem" } as React.CSSProperties}
+            >
               <Sidebar
                 collapsed={collapsed}
                 onToggleCollapse={() => setCollapsed((c) => !c)}

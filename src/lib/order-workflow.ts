@@ -5,6 +5,7 @@ import {
   COURIERS,
   MANUAL_COURIER,
   canRun,
+  defaultCourierFor,
   statusLabel,
   type OrderAction,
 } from "@/config/order-workflow";
@@ -12,7 +13,8 @@ import { checkAddress, routeNewOrder } from "./address-check";
 import { applyTransition, getOrderOps, intakeOrder } from "./order-ops";
 import { readOrderBrief } from "./shopify-order-detail";
 import { fulfillOrder, setOrderTags, updateOrderShipping } from "./shopify-writes";
-import { bookConsignment } from "./courier-booking";
+import { readAppSettings } from "./app-settings";
+import { renderConsignmentId } from "@/config/consignment-schema";
 import { attachToLoadSheet, resolveLoadSheet } from "./dispatch";
 
 /**
@@ -43,6 +45,13 @@ export interface ActionResult {
 }
 
 const str = (v: unknown): string => (v == null ? "" : String(v)).trim();
+
+let lastConsignmentMs = 0;
+/** Strictly increasing ms, so a bulk assignment in one process never repeats a timestamp-based ID. */
+function nextConsignmentMs(): number {
+  lastConsignmentMs = Math.max(Date.now(), lastConsignmentMs + 1);
+  return lastConsignmentMs;
+}
 
 function isAction(v: unknown): v is OrderAction {
   return typeof v === "string" && v in ACTION_FROM;
@@ -157,39 +166,28 @@ export async function runOrderAction(
       return move("active");
     }
 
+    // The consignment ID is generated from the schema chosen in Settings
+    // (src/config/consignment-schema.ts) — never typed in. `courier` is a
+    // COURIERS value, or "auto" to pick by the shipping city.
     case "assign_consignment": {
-      const courier = str(payload.courier);
-      const meta = COURIERS.find((c) => c.value === courier);
-      if (!meta) return { error: "Pick a courier." };
+      const brief = await readOrderBrief(orderId);
+      if (!brief.order) return { error: brief.error };
+      const city = brief.order.address?.city ?? "";
+      const requested = str(payload.courier) || "auto";
+      const courier = requested === "auto" ? defaultCourierFor(city) : requested;
+      if (!COURIERS.some((c) => c.value === courier)) return { error: "Pick a courier." };
 
-      if (payload.useApi === true) {
-        if (!meta.api) return { error: `${courier} has no booking API — enter the consignment ID manually.` };
-        const brief = await readOrderBrief(orderId);
-        if (!brief.order) return { error: brief.error };
-        const booked = await bookConsignment(courier, brief.order);
-        if (!booked.consignmentId) {
-          const reason = booked.error ?? "Booking failed.";
-          if (from !== "booking_failed") {
-            await move("booking_failed", { courier, bookingError: reason }, reason);
-          }
-          return { error: reason, status: "booking_failed" };
-        }
-        return move(
-          "finalized",
-          { courier, consignmentId: booked.consignmentId },
-          `Booked with ${courier} via API — ${booked.consignmentId}`,
-          ["bookingError"],
-        );
-      }
-
-      const consignmentId = str(payload.consignmentId);
-      if (!/^[A-Za-z0-9-]{4,40}$/.test(consignmentId)) {
-        return { error: "Enter the consignment ID (4–40 letters, digits, or dashes)." };
-      }
+      const { consignmentTemplate } = await readAppSettings();
+      const consignmentId = renderConsignmentId(consignmentTemplate, {
+        city,
+        courier,
+        orderNumber: brief.order.number,
+        ms: nextConsignmentMs(),
+      });
       return move(
         "finalized",
         { courier, consignmentId },
-        `Consignment ${consignmentId} assigned manually (${courier})`,
+        `Consignment ${consignmentId} generated (${courier})`,
         ["bookingError"],
       );
     }

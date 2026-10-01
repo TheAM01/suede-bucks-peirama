@@ -11,12 +11,20 @@ import {
   ShoppingBag,
   ExternalLink,
   LayoutDashboard,
+  QrCode,
 } from "@/components/icons";
 import type { CurrentUser } from "@/lib/auth";
 import { CURRENCIES } from "@/lib/currency";
 import { useCurrency } from "@/components/currency-provider";
 import { useDashboardView } from "@/components/dashboard-view-provider";
 import type { DashboardView } from "@/lib/dashboard-view";
+import {
+  CONSIGNMENT_TEMPLATES,
+  CONSIGNMENT_TOKENS,
+  SAMPLE_CONSIGNMENT_VALUES,
+  renderConsignmentId,
+} from "@/config/consignment-schema";
+import { saveConsignmentTemplateAction } from "@/lib/settings-actions";
 import {
   Card,
   CardContent,
@@ -56,7 +64,90 @@ const NOTIFICATIONS = [
   { key: "pos", label: "POS session alerts", desc: "Notify when a register is opened or closed." },
 ];
 
-export function SettingsView({ user }: { user: CurrentUser }) {
+/** Store-wide (server-side) — applies to every consignment assigned from now on. */
+function ConsignmentSchemaCard({ initial }: { initial: string }) {
+  const [template, setTemplate] = React.useState(initial);
+  const [savedTemplate, setSavedTemplate] = React.useState(initial);
+  const [pending, startTransition] = React.useTransition();
+  const [message, setMessage] = React.useState<{ ok: boolean; text: string } | null>(null);
+  // A fixed sample time keeps the preview stable between renders.
+  const preview = (t: string) => renderConsignmentId(t, { ...SAMPLE_CONSIGNMENT_VALUES, ms: 1790000000000 });
+
+  function save() {
+    startTransition(async () => {
+      const res = await saveConsignmentTemplateAction(template);
+      if (res.ok) setSavedTemplate(template);
+      setMessage(res.ok ? { ok: true, text: "Saved" } : { ok: false, text: res.message ?? "Couldn't save." });
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <QrCode className="size-4 text-primary" /> Consignment IDs
+        </CardTitle>
+        <CardDescription>
+          The shape of the ID generated when an order is assigned a consignment. Applies store-wide,
+          from the next assignment on — existing IDs don&apos;t change.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="consignment-template">Schema</Label>
+          <Select
+            id="consignment-template"
+            value={template}
+            onChange={(e) => {
+              setTemplate(e.target.value);
+              setMessage(null);
+            }}
+          >
+            {CONSIGNMENT_TEMPLATES.map((t, i) => (
+              <option key={t} value={t}>
+                {t}
+                {i === 0 ? " (default)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+          <p className="text-xs text-muted-foreground">
+            Example — order #1004 to Karachi with Insta
+          </p>
+          <p className="mt-0.5 break-all font-mono text-sm">{preview(template)}</p>
+        </div>
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+          {CONSIGNMENT_TOKENS.map((t) => (
+            <div key={t.token} className="flex gap-2">
+              <dt className="shrink-0 font-mono text-foreground">{t.token}</dt>
+              <dd className="text-muted-foreground">{t.meaning}</dd>
+            </div>
+          ))}
+        </dl>
+      </CardContent>
+      <CardFooter className="justify-end gap-3">
+        {message ? (
+          <span className={message.ok ? "text-sm text-success" : "text-sm text-destructive"}>
+            {message.text}
+          </span>
+        ) : null}
+        <Button onClick={save} disabled={pending || template === savedTemplate}>
+          {message?.ok ? <Check /> : null}
+          {pending ? "Saving…" : "Save schema"}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+export function SettingsView({
+  user,
+  consignmentTemplate,
+}: {
+  user: CurrentUser;
+  consignmentTemplate: string;
+}) {
   const { currency, setCurrency } = useCurrency();
   const { view, setView } = useDashboardView();
   const [saved, setSaved] = React.useState(false);
@@ -146,6 +237,8 @@ export function SettingsView({ user }: { user: CurrentUser }) {
           </Button>
         </CardFooter>
       </Card>
+
+      <ConsignmentSchemaCard initial={consignmentTemplate} />
 
       {/* Dashboard view */}
       <Card>
