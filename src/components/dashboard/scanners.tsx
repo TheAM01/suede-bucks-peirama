@@ -3,7 +3,7 @@
 import * as React from "react";
 import { QrCode, Check, AlertCircle, Trash2, Loader2 } from "@/components/icons";
 import { COURIER_OPTIONS, LOCATION_OPTIONS } from "@/config/resources";
-import { consignmentFromScan, statusLabel } from "@/config/order-workflow";
+import { consignmentFromScan, normalizeCourier, statusLabel } from "@/config/order-workflow";
 import { useStore } from "@/lib/store";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -160,6 +160,9 @@ export function ScanLoadSheetButton() {
   const store = useStore();
   const [open, setOpen] = React.useState(false);
   const [courier, setCourier] = React.useState(COURIER_OPTIONS[0].value);
+  // "Other" takes a typed name, matching orders assigned to a custom courier.
+  const [otherName, setOtherName] = React.useState("");
+  const sheetCourier = courier === "Other" ? (normalizeCourier(otherName).courier ?? "") : courier;
   const [location, setLocation] = React.useState(LOCATION_OPTIONS[0].value);
   const [parcels, setParcels] = React.useState<Parcel[]>([]);
   const [scanError, setScanError] = React.useState<string | null>(null);
@@ -189,8 +192,10 @@ export function ScanLoadSheetButton() {
         setScanError(`${p.number || code} is already on load sheet ${p.loadSheet}.`);
       } else if (p.opsStatus !== "in_pickup_packing" && p.opsStatus !== "dispatched") {
         setScanError(`${p.number || code} is ${statusLabel(p.opsStatus)} — only parcels with a printed label can go on a sheet.`);
-      } else if (p.courier && p.courier !== courier) {
-        setScanError(`${p.number || code} is booked with ${p.courier}, not ${courier}.`);
+      } else if (!sheetCourier) {
+        setScanError("Type the courier's name first.");
+      } else if (p.courier && p.courier !== sheetCourier) {
+        setScanError(`${p.number || code} is booked with ${p.courier}, not ${sheetCourier}.`);
       } else {
         setParcels((prev) => [...prev, p]);
       }
@@ -208,7 +213,7 @@ export function ScanLoadSheetButton() {
       const res = await fetch("/api/dispatch/scan-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courier, location, consignmentIds: parcels.map((p) => p.consignmentId) }),
+        body: JSON.stringify({ courier: sheetCourier, location, consignmentIds: parcels.map((p) => p.consignmentId) }),
       });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -288,6 +293,16 @@ export function ScanLoadSheetButton() {
                   </option>
                 ))}
               </Select>
+              {courier === "Other" ? (
+                <Input
+                  aria-label="Courier name"
+                  value={otherName}
+                  onChange={(e) => setOtherName(e.target.value)}
+                  placeholder="Courier name"
+                  maxLength={40}
+                  disabled={parcels.length > 0}
+                />
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="ls-location">Location</Label>

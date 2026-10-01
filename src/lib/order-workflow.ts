@@ -2,10 +2,11 @@ import "server-only";
 import {
   ACTION_FROM,
   ACTION_LABEL,
-  COURIERS,
   MANUAL_COURIER,
   canRun,
+  courierCode,
   defaultCourierFor,
+  normalizeCourier,
   statusLabel,
   type OrderAction,
 } from "@/config/order-workflow";
@@ -168,19 +169,20 @@ export async function runOrderAction(
 
     // The consignment ID is generated from the schema chosen in Settings
     // (src/config/consignment-schema.ts) — never typed in. `courier` is a
-    // COURIERS value, or "auto" to pick by the shipping city.
+    // COURIERS value, a custom courier name, or "auto" to pick by the shipping city.
     case "assign_consignment": {
       const brief = await readOrderBrief(orderId);
       if (!brief.order) return { error: brief.error };
       const city = brief.order.address?.city ?? "";
       const requested = str(payload.courier) || "auto";
-      const courier = requested === "auto" ? defaultCourierFor(city) : requested;
-      if (!COURIERS.some((c) => c.value === courier)) return { error: "Pick a courier." };
+      const picked = normalizeCourier(requested === "auto" ? defaultCourierFor(city) : requested);
+      if (!picked.courier) return { error: picked.error };
+      const courier = picked.courier;
 
       const { consignmentTemplate } = await readAppSettings();
       const consignmentId = renderConsignmentId(consignmentTemplate, {
         city,
-        courier,
+        courier: courierCode(courier),
         orderNumber: brief.order.number,
         ms: nextConsignmentMs(),
       });

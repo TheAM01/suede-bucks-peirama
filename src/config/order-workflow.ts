@@ -94,11 +94,30 @@ export function canRun(action: OrderAction, status: unknown, courier?: unknown):
   return ACTION_FROM[action].includes(String(status));
 }
 
-/** Couriers a consignment can be assigned to. The ID itself is generated (src/config/consignment-schema.ts). */
+/**
+ * Couriers offered when assigning a consignment (a custom name can be typed
+ * too). `code` is what `<courier-name>` becomes in a generated consignment ID
+ * (src/config/consignment-schema.ts).
+ */
 export const COURIERS = [
-  { value: "Insta", label: "Insta (out of city)" },
-  { value: MANUAL_COURIER, label: "Manual courier (Karachi)" },
+  { value: "Insta", label: "Insta (out of city)", code: "INSTA" },
+  { value: MANUAL_COURIER, label: "Manual courier (Karachi)", code: "MANKHI" },
 ] as const;
+
+/** The courier's ID code: its listed code, else the custom name reduced to A–Z / 0–9. */
+export function courierCode(courier: unknown): string {
+  const known = COURIERS.find((c) => c.value === courier);
+  return known ? known.code : String(courier ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Validate a typed courier name; a case-insensitive match to a listed courier is snapped to it. */
+export function normalizeCourier(name: unknown): { courier?: string; error?: string } {
+  const v = String(name ?? "").trim().replace(/\s+/g, " ");
+  if (!/[A-Za-z0-9]/.test(v)) return { error: "Enter the courier's name." };
+  if (v.length > 40) return { error: "Courier name is too long (40 characters max)." };
+  const known = COURIERS.find((c) => c.value.toLowerCase() === v.toLowerCase());
+  return { courier: known ? known.value : v };
+}
 
 /** Karachi deliveries go with the in-house manual courier; everything else books with Insta. */
 export function defaultCourierFor(city: unknown): string {

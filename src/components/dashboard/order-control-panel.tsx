@@ -22,7 +22,9 @@ import {
   COURIERS,
   ORDER_STATUS_OPTIONS,
   canRun,
+  courierCode,
   defaultCourierFor,
+  normalizeCourier,
   statusLabel,
   type OrderAction,
 } from "@/config/order-workflow";
@@ -585,7 +587,7 @@ function ReasonDialog({
   );
 }
 
-/** Pick the courier; the consignment ID is generated server-side from the schema chosen in Settings. */
+/** Pick the courier (listed, auto-by-city, or a typed custom name); the consignment ID is generated server-side from the schema chosen in Settings. */
 function ConsignmentDialog({
   rows,
   onClose,
@@ -595,8 +597,11 @@ function ConsignmentDialog({
   onClose: () => void;
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
-  const [courier, setCourier] = React.useState<string>("auto");
+  const [choice, setChoice] = React.useState<string>("auto");
+  const [custom, setCustom] = React.useState("");
   const single = rows.length === 1;
+  const isCustom = choice === "custom";
+  const customCheck = normalizeCourier(custom);
 
   return (
     <Dialog
@@ -609,24 +614,50 @@ function ConsignmentDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => onSubmit({ courier })}>Assign</Button>
+          <Button
+            disabled={isCustom && !customCheck.courier}
+            onClick={() => onSubmit({ courier: isCustom ? customCheck.courier : choice })}
+          >
+            Assign
+          </Button>
         </>
       }
     >
-      <div className="space-y-2">
-        <Label htmlFor="courier">Courier</Label>
-        <Select id="courier" value={courier} onChange={(e) => setCourier(e.target.value)}>
-          <option value="auto">Auto — by city (Karachi → manual, else Insta)</option>
-          {COURIERS.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </Select>
-        {courier === "auto" && single ? (
-          <p className="text-xs text-muted-foreground">
-            {String(rows[0].city || "No city")} → {defaultCourierFor(rows[0].city)}
-          </p>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="courier">Courier</Label>
+          <Select id="courier" value={choice} onChange={(e) => setChoice(e.target.value)}>
+            <option value="auto">Auto — by city (Karachi → manual, else Insta)</option>
+            {COURIERS.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+            <option value="custom">Custom…</option>
+          </Select>
+          {choice === "auto" && single ? (
+            <p className="text-xs text-muted-foreground">
+              {String(rows[0].city || "No city")} → {defaultCourierFor(rows[0].city)}
+            </p>
+          ) : null}
+        </div>
+        {isCustom ? (
+          <div className="space-y-2">
+            <Label htmlFor="custom-courier">Courier name</Label>
+            <Input
+              id="custom-courier"
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              placeholder="e.g. Leopards"
+              maxLength={40}
+              autoFocus
+            />
+            {customCheck.courier ? (
+              <p className="text-xs text-muted-foreground">
+                In the consignment ID: <span className="font-mono">{courierCode(customCheck.courier)}</span>
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </Dialog>

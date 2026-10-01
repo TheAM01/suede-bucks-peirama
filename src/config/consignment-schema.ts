@@ -12,7 +12,7 @@
 
 export const CONSIGNMENT_TOKENS = [
   { token: "<order-city>", meaning: "Shipping city, e.g. KARACHI" },
-  { token: "<courier-name>", meaning: "Courier, e.g. INSTA or MANUALKARACHI" },
+  { token: "<courier-name>", meaning: "Courier code, e.g. INSTA, MANKHI, or a custom courier's name" },
   { token: "<order-number>", meaning: "Shopify order number without #, e.g. 1004" },
   { token: "<ms-since-epoch>", meaning: "Milliseconds since 1970 at assignment" },
 ] as const;
@@ -37,6 +37,7 @@ const clean = (v: unknown) => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g
 
 export interface ConsignmentValues {
   city: unknown;
+  /** the courier's code (`courierCode()` in src/config/order-workflow.ts) */
   courier: unknown;
   orderNumber: unknown;
   /** milliseconds since epoch */
@@ -55,6 +56,6 @@ export function renderConsignmentId(template: string, v: ConsignmentValues): str
 /** Example values for the Settings preview. */
 export const SAMPLE_CONSIGNMENT_VALUES: Omit<ConsignmentValues, "ms"> = {
   city: "Karachi",
-  courier: "Insta",
+  courier: "INSTA",
   orderNumber: "#1004",
 };
