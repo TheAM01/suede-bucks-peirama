@@ -115,7 +115,9 @@ export async function runOrderAction(
         return { error: "Street address and city are required." };
       }
       const note = payload.note === undefined ? undefined : String(payload.note);
-      const saved = await updateOrderShipping(orderId, address, note);
+      const email = payload.email === undefined ? undefined : str(payload.email);
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "That email address doesn't look right." };
+      const saved = await updateOrderShipping(orderId, address, note, email);
       if (saved.error) return { error: `Shopify didn't save the change: ${saved.error}` };
 
       const issues = checkAddress({

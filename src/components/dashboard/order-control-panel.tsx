@@ -22,6 +22,9 @@ import {
   ACTION_LABEL,
   COURIERS,
   ORDER_STATUS_OPTIONS,
+  LABEL_PRINTED_STAGES,
+  MODIFY_BUTTON_TABS,
+  SHIPPED_STAGES,
   canRun,
   courierCode,
   defaultCourierFor,
@@ -165,7 +168,8 @@ export function OrderControlPanel({
 
   const actions = status
     ? BUTTON_ORDER.filter((a) => rows.every((r) => canRun(a, status, r.courier)))
-        .filter((a) => a !== "modify" || rows.length === 1)
+        // Modify is a triage button; in other stages it's the ⋯ menu's Edit (or the order page).
+        .filter((a) => a !== "modify" || (rows.length === 1 && MODIFY_BUTTON_TABS.includes(status)))
         // Only offered for dispatched orders that aren't on a sheet yet.
         .filter((a) => a !== "add_to_load_sheet" || rows.every((r) => !r.loadSheet))
     : [];
@@ -345,7 +349,7 @@ export function OrderControlPanel({
                 rows.length > 1
                   ? "Select a single order to edit"
                   : !canRun("modify", status, rows[0]?.courier)
-                    ? `Orders in ${statusLabel(status)} can't be edited — only Exception, Pending CC, and Active`
+                    ? `Orders in ${statusLabel(status)} can't be edited`
                     : undefined
               }
               moveOptions={ORDER_STATUS_OPTIONS.filter((o) => o.value !== status)}
@@ -361,7 +365,7 @@ export function OrderControlPanel({
       </SelectionDock>
 
       {dialog === "modify" && rows[0] ? (
-        <ModifyDrawer
+        <OrderEditDrawer
           row={rows[0]}
           onClose={close}
           onSaved={() => {
@@ -708,12 +712,18 @@ const ADDRESS_FIELDS: { key: keyof AddressForm; label: string; half?: boolean }[
 ];
 
 /** Edit the shipping address + note; nothing is written until the confirmation modal is accepted. */
-function ModifyDrawer({
+/**
+ * Edit an order's customer details — shipping name, address, phone, contact
+ * email, and note — written to the Shopify order through the `modify` action.
+ * Used by the control panel (Modify / ⋯ Edit) and the order page. Warns when
+ * the order is past the point where an address change is harmless.
+ */
+export function OrderEditDrawer({
   row,
   onClose,
   onSaved,
 }: {
-  row: Row;
+  row: { id: string; number?: unknown; opsStatus?: unknown };
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -722,7 +732,9 @@ function ModifyDrawer({
   const [form, setForm] = React.useState<AddressForm | null>(null);
   const [codes, setCodes] = React.useState({ provinceCode: "", countryCode: "" });
   const [note, setNote] = React.useState("");
+  const [email, setEmail] = React.useState("");
   const [flags, setFlags] = React.useState<string[]>([]);
+  const stage = String(row.opsStatus ?? "");
   const [confirming, setConfirming] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -747,6 +759,7 @@ function ModifyDrawer({
         });
         setCodes({ provinceCode: a?.provinceCode ?? "", countryCode: a?.countryCode ?? "" });
         setNote(body.order.note ?? "");
+        setEmail(body.order.customer?.email ?? "");
         setFlags(body.ops?.flags ?? []);
       } catch (e) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : "Couldn't load the order.");
@@ -768,7 +781,7 @@ function ModifyDrawer({
     setConfirming(false);
     setSaving(true);
     setSaveError(null);
-    const res = await postOrderAction(row.id, "modify", { address: { ...form, ...codes }, note });
+    const res = await postOrderAction(row.id, "modify", { address: { ...form, ...codes }, note, email: email.trim() });
     setSaving(false);
     if (res.error) setSaveError(res.error);
     else onSaved();
@@ -779,8 +792,8 @@ function ModifyDrawer({
       <Drawer
         open
         onClose={onClose}
-        title={`Modify ${String(row.number)}`}
-        description="Edits the order's shipping address and note in Shopify."
+        title={`Edit ${String(row.number)}`}
+        description="The customer's details on this order — shipping name, address, phone, email, and note — saved to the Shopify order."
         footer={
           <>
             <Button variant="outline" onClick={onClose} disabled={saving}>
@@ -798,6 +811,17 @@ function ModifyDrawer({
           <p className="text-sm text-destructive">{loadError ?? "No shipping address on this order."}</p>
         ) : (
           <div className="space-y-5">
+            {SHIPPED_STAGES.includes(stage) ? (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm">
+                This parcel has already left with the courier — the change is saved on the order, but
+                the courier won&apos;t see it. Call them if the delivery address needs to change.
+              </div>
+            ) : LABEL_PRINTED_STAGES.includes(stage) ? (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm">
+                The shipping label is already printed. After changing the address, reprint it with
+                <span className="font-medium"> Print shipping label</span> and swap the label on the parcel.
+              </div>
+            ) : null}
             {flags.length ? (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm">
                 <p className="font-medium text-destructive">Flagged on intake</p>
@@ -819,6 +843,16 @@ function ModifyDrawer({
                   />
                 </div>
               ))}
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="order-email">Email</Label>
+                <Input
+                  id="order-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
               <div className="col-span-2 space-y-2">
                 <Label htmlFor="order-note">Order note</Label>
                 <Textarea id="order-note" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -854,7 +888,7 @@ function ModifyDrawer({
         onCancel={() => setConfirming(false)}
         onConfirm={save}
         title={`Save changes to ${String(row.number)}?`}
-        description="The shipping address and note are updated on the Shopify order."
+        description="The shipping details, email, and note are updated on the Shopify order. The customer's account isn't changed."
         confirmLabel="Save"
         destructive={false}
       />

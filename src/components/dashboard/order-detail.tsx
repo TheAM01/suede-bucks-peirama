@@ -19,9 +19,11 @@ import {
   Clock,
   Printer,
   IdCard,
+  Pencil,
 } from "@/components/icons";
 import type { OrderOpsDoc } from "@/lib/order-ops";
-import { ORDER_STATUS_OPTIONS, statusLabel } from "@/config/order-workflow";
+import { ORDER_STATUS_OPTIONS, canRun, statusLabel } from "@/config/order-workflow";
+import { OrderEditDrawer } from "./order-control-panel";
 import type {
   OrderDetail,
   TimelineEntry,
@@ -210,6 +212,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   const [ops, setOps] = React.useState<OrderOpsDoc | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [editing, setEditing] = React.useState(false);
 
   // No state is touched before the first await, so mounting this doesn't
   // cascade a render. `isStale` drops a response whose request has been
@@ -292,6 +295,8 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
     );
   }
 
+  const stage = ops?.opsStatus ?? "active";
+  const canEdit = canRun("modify", stage);
   const pay = PAYMENT_BADGE[order.payment] ?? { label: order.payment, variant: "outline" as const };
   const ful =
     FULFILLMENT_BADGE[order.fulfillment] ?? { label: order.fulfillment, variant: "outline" as const };
@@ -317,11 +322,32 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
             Placed {formatDateTime(order.createdAt)} · {order.customer.name}
           </p>
         </div>
-        <Button variant="outline" onClick={retry}>
-          <RefreshCw />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => setEditing(true)}
+            disabled={!canEdit}
+            title={canEdit ? undefined : "Canceled orders can't be edited"}
+          >
+            <Pencil />
+            Edit details
+          </Button>
+          <Button variant="outline" onClick={retry}>
+            <RefreshCw />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {editing ? (
+        <OrderEditDrawer
+          row={{ id: order.id, number: order.number, opsStatus: stage }}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            void load();
+          }}
+        />
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main column */}
@@ -487,11 +513,17 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
               <CardTitle className="flex items-center gap-2">
                 <User className="size-4 text-primary" />
                 Customer
               </CardTitle>
+              {canEdit ? (
+                <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                  <Pencil />
+                  Edit
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
               <p className="font-medium">{order.customer.name}</p>
@@ -514,11 +546,17 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
 
           {order.shippingAddress ? (
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
                 <CardTitle className="flex items-center gap-2">
                   <MapPin className="size-4 text-primary" />
                   Shipping address
                 </CardTitle>
+                {canEdit ? (
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                    <Pencil />
+                    Edit
+                  </Button>
+                ) : null}
               </CardHeader>
               <CardContent>
                 <p className="whitespace-pre-line text-sm text-muted-foreground">

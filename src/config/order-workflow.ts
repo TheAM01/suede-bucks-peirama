@@ -54,8 +54,20 @@ export type OrderAction =
   | "mark_returned"
   | "cancel";
 
+/** Every stage an order can still be edited in — all but Canceled. */
+const EDITABLE_STAGES = ORDER_STATUS_OPTIONS.map((o) => o.value).filter((v) => v !== "canceled");
+
+/** Where the control panel offers Modify as a workflow button (triage). Elsewhere it's the ⋯ menu's Edit, or the order page. */
+export const MODIFY_BUTTON_TABS = ["exception", "active", "pending_cc"];
+
+/** Stages where the shipping label already exists — an address edit means reprinting it. */
+export const LABEL_PRINTED_STAGES = ["in_pickup_packing"];
+/** Stages where the parcel has left — an address edit no longer reaches the courier. */
+export const SHIPPED_STAGES = ["dispatched", "fulfilled", "delivered", "returned"];
+
 export const ACTION_FROM: Record<OrderAction, readonly string[]> = {
-  modify: ["exception", "active", "pending_cc"],
+  /** editing the order's customer details (shipping address, phone, email, note) */
+  modify: EDITABLE_STAGES,
   move_active: ["exception", "pending_cc"],
   move_exception: ["active"],
   discard: ["exception", "active", "pending_cc"],

@@ -532,11 +532,12 @@ export interface OrderAddressInput {
   countryCode?: string;
 }
 
-/** Replace the order's shipping address (and optionally its note) in Shopify. */
+/** Replace the order's shipping address (and optionally its note and contact email) in Shopify. */
 export async function updateOrderShipping(
   id: string,
   address: OrderAddressInput,
   note?: string,
+  email?: string,
 ): Promise<{ error?: string }> {
   const shippingAddress: Record<string, unknown> = {
     firstName: address.firstName,
@@ -551,6 +552,7 @@ export async function updateOrderShipping(
   if (address.countryCode) shippingAddress.countryCode = address.countryCode;
   const input: Record<string, unknown> = { id: toGid("Order", id), shippingAddress };
   if (note !== undefined) input.note = note;
+  if (email !== undefined) input.email = email;
   const { error } = await mutate(
     `mutation($input: OrderInput!) {
       orderUpdate(input: $input) {
