@@ -811,7 +811,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     icon: ShoppingCart,
     subtitle: "Incoming and fulfilled orders",
     guide: "orders",
-    searchKeys: ["number", "customer", "consignmentId"],
+    searchKeys: ["number", "customer", "customerAccount", "consignmentId"],
     rowHref: (r) => `/dashboard/orders/${r.id}`,
     tabs: { field: "opsStatus", options: ORDER_OPS_OPTIONS },
     columns: [

@@ -120,7 +120,8 @@ async function readOrders(): Promise<ShopifyReadResult> {
         id name createdAt sourceName note subtotalLineItemsQuantity tags
         displayFinancialStatus displayFulfillmentStatus paymentGatewayNames
         customer { displayName }
-        shippingAddress { city }
+        shippingAddress { city name }
+        billingAddress { name }
         subtotalPriceSet { shopMoney { amount } }
         totalDiscountsSet { shopMoney { amount } }
         totalShippingPriceSet { shopMoney { amount } }
@@ -155,7 +156,14 @@ async function readOrders(): Promise<ShopifyReadResult> {
     return {
       id: gid(o.id),
       number: str(o.name),
-      customer: str(get(o, "customer", "displayName")) || "Guest",
+      // The name entered on the order (who it's for), not the linked account's —
+      // the account name stays searchable as customerAccount. Order page shows both.
+      customer:
+        str(get(o, "shippingAddress", "name")).trim() ||
+        str(get(o, "billingAddress", "name")).trim() ||
+        str(get(o, "customer", "displayName")) ||
+        "Guest",
+      customerAccount: str(get(o, "customer", "displayName")),
       city: str(get(o, "shippingAddress", "city")),
       courier: courier || "",
       gateway: Array.isArray(o.paymentGatewayNames)

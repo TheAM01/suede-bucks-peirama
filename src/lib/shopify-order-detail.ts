@@ -131,7 +131,10 @@ export interface OrderDetail {
   tags: string[];
   payment: string;
   fulfillment: string;
+  /** who this order is for — the name entered on the order (shipping, then billing), not the account's */
   customer: { name: string; email: string; phone: string };
+  /** the Shopify customer account the order is linked to; null for guest checkouts */
+  customerProfile: CustomerProfile | null;
   shippingAddress: string;
   /** the structured address, for the Modify form and the address check */
   shippingAddressFields: ShippingAddressFields | null;
@@ -147,6 +150,85 @@ export interface OrderDetail {
   transactions: OrderTransaction[];
   refunds: OrderRefund[];
   timeline: TimelineEntry[];
+}
+
+/** One name a customer has gone by, and where it was seen. */
+export interface CustomerAlias {
+  name: string;
+  /** how many of the customer's recent orders used it (shipping or billing name) */
+  orders: number;
+  isAccountName: boolean;
+  /** this order used it */
+  onThisOrder: boolean;
+}
+
+export interface CustomerProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  numberOfOrders: number;
+  amountSpent: number;
+  createdAt: string;
+  tags: string[];
+  note: string;
+  location: string;
+  /** every distinct name on the account, its saved addresses, and its last 50 orders */
+  aliases: CustomerAlias[];
+}
+
+/** The name typed on the order itself: shipping name, else billing name. */
+function orderName(o: unknown): string {
+  return str(get(o, "shippingAddress", "name")).trim() || str(get(o, "billingAddress", "name")).trim();
+}
+
+const aliasKey = (n: string) => n.trim().replace(/\s+/g, " ").toLowerCase();
+
+function buildProfile(o: Record<string, unknown>): CustomerProfile | null {
+  const c = o.customer as Record<string, unknown> | null | undefined;
+  if (!c) return null;
+  const accountName = str(c.displayName).trim();
+  const thisOrder = new Set([str(get(o, "shippingAddress", "name")), str(get(o, "billingAddress", "name"))].map(aliasKey));
+
+  // Each distinct name (case/space-insensitive), counting the orders that used it.
+  const aliases = new Map<string, CustomerAlias>();
+  const see = (raw: string, orderId?: string, counted?: Set<string>) => {
+    const name = raw.trim().replace(/\s+/g, " ");
+    if (!name) return;
+    const k = aliasKey(name);
+    const a = aliases.get(k) ?? { name, orders: 0, isAccountName: false, onThisOrder: thisOrder.has(k) };
+    if (orderId && counted && !counted.has(k)) {
+      a.orders += 1;
+      counted.add(k);
+    }
+    aliases.set(k, a);
+  };
+  see(accountName);
+  see(`${str(c.firstName)} ${str(c.lastName)}`);
+  for (const a of list(c.addresses)) see(str(a.name));
+  for (const ord of connNodes(c.orders)) {
+    const counted = new Set<string>();
+    see(str(get(ord, "shippingAddress", "name")), str(ord.id), counted);
+    see(str(get(ord, "billingAddress", "name")), str(ord.id), counted);
+  }
+  const accountKey = aliasKey(accountName);
+  if (aliases.has(accountKey)) aliases.get(accountKey)!.isAccountName = true;
+
+  return {
+    id: fromGid(c.id),
+    name: accountName || "Unnamed customer",
+    email: str(c.email),
+    phone: str(c.phone),
+    numberOfOrders: num(c.numberOfOrders),
+    amountSpent: num(get(c, "amountSpent", "amount")),
+    createdAt: str(c.createdAt),
+    tags: Array.isArray(c.tags) ? c.tags.map(str).filter(Boolean) : [],
+    note: str(c.note),
+    location: [str(get(c, "defaultAddress", "city")), str(get(c, "defaultAddress", "country"))].filter(Boolean).join(", "),
+    aliases: [...aliases.values()].sort(
+      (a, b) => Number(b.isAccountName) - Number(a.isAccountName) || b.orders - a.orders || a.name.localeCompare(b.name),
+    ),
+  };
 }
 
 const PAYMENT_MAP: Record<string, string> = {
@@ -172,8 +254,17 @@ const ORDER_DETAIL_QUERY = `query OrderDetail($id: ID!) {
     id name createdAt processedAt cancelledAt cancelReason closedAt
     sourceName note tags email phone
     displayFinancialStatus displayFulfillmentStatus
-    customer { displayName email phone }
+    customer {
+      id displayName firstName lastName email phone numberOfOrders createdAt tags note
+      amountSpent { amount }
+      defaultAddress { city country }
+      addresses(first: 20) { name }
+      orders(first: 50, sortKey: CREATED_AT, reverse: true) {
+        nodes { id shippingAddress { name } billingAddress { name } }
+      }
+    }
     shippingAddress { name firstName lastName phone address1 address2 city province provinceCode zip country countryCodeV2 }
+    billingAddress { name }
     subtotalPriceSet { shopMoney { amount } }
     totalShippingPriceSet { shopMoney { amount } }
     totalTaxSet { shopMoney { amount } }
@@ -425,10 +516,11 @@ export async function readOrderDetail(
     payment: PAYMENT_MAP[lower(o.displayFinancialStatus)] ?? "pending",
     fulfillment: FULFILLMENT_MAP[lower(o.displayFulfillmentStatus)] ?? "unfulfilled",
     customer: {
-      name: str(get(o, "customer", "displayName")) || "Guest",
-      email: str(get(o, "customer", "email")) || str(o.email),
-      phone: str(get(o, "customer", "phone")) || str(o.phone),
+      name: orderName(o) || str(get(o, "customer", "displayName")) || "Guest",
+      email: str(o.email) || str(get(o, "customer", "email")),
+      phone: str(get(o, "shippingAddress", "phone")) || str(o.phone) || str(get(o, "customer", "phone")),
     },
+    customerProfile: buildProfile(o),
     shippingAddress: formatAddress(o.shippingAddress),
     shippingAddressFields: addressFields(o.shippingAddress),
     totals: {
@@ -490,7 +582,7 @@ export async function readOrderBrief(
     order: {
       id: fromGid(o.id),
       number: str(o.name),
-      customer: str(get(o, "customer", "displayName")) || str(get(o, "shippingAddress", "name")) || "Guest",
+      customer: str(get(o, "shippingAddress", "name")) || str(get(o, "customer", "displayName")) || "Guest",
       gateways: Array.isArray(o.paymentGatewayNames) ? o.paymentGatewayNames.map(str) : [],
       total: money(o, "totalPriceSet"),
       outstanding: money(o, "totalOutstandingSet"),

@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Clock,
   Printer,
+  IdCard,
 } from "@/components/icons";
 import type { OrderOpsDoc } from "@/lib/order-ops";
 import { ORDER_STATUS_OPTIONS, statusLabel } from "@/config/order-workflow";
@@ -41,7 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { BadgeVariant } from "@/config/resource-types";
-import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, formatNumber, cn } from "@/lib/utils";
 
 const PAYMENT_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {
   paid: { label: "Paid", variant: "success" },
@@ -505,8 +506,11 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
               {order.customer.phone ? (
                 <p className="text-muted-foreground">{order.customer.phone}</p>
               ) : null}
+              <p className="pt-1 text-xs text-muted-foreground">As entered on this order.</p>
             </CardContent>
           </Card>
+
+          <CustomerProfileCard profile={order.customerProfile} />
 
           {order.shippingAddress ? (
             <Card>
@@ -649,6 +653,92 @@ function WorkflowCard({ orderId, ops }: { orderId: string; ops: OrderOpsDoc }) {
           Move orders between stages from the control panel on the Orders list.
         </p>
       </CardContent>
+    </Card>
+  );
+}
+
+/** The Shopify customer account behind the order, and every name it has gone by. */
+function CustomerProfileCard({ profile }: { profile: OrderDetail["customerProfile"] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <IdCard className="size-4 text-primary" />
+          Customer profile
+        </CardTitle>
+      </CardHeader>
+      {!profile ? (
+        <CardContent>
+          <p className="text-sm text-muted-foreground">Guest checkout — this order isn&apos;t linked to a customer account.</p>
+        </CardContent>
+      ) : (
+        <CardContent className="space-y-4 text-sm">
+          <div className="space-y-1">
+            <p className="font-medium">{profile.name}</p>
+            {profile.email ? (
+              <a href={`mailto:${profile.email}`} className="block truncate text-primary hover:underline">
+                {profile.email}
+              </a>
+            ) : null}
+            {profile.phone ? <p className="text-muted-foreground">{profile.phone}</p> : null}
+            {profile.location ? <p className="text-muted-foreground">{profile.location}</p> : null}
+          </div>
+
+          <dl className="grid grid-cols-2 gap-3">
+            <div>
+              <dt className="text-xs text-muted-foreground">Orders</dt>
+              <dd className="font-medium tabular-nums">{formatNumber(profile.numberOfOrders)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Total spent</dt>
+              <dd className="font-medium tabular-nums">{formatCurrency(profile.amountSpent)}</dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="text-xs text-muted-foreground">Customer since</dt>
+              <dd>{profile.createdAt ? formatDate(profile.createdAt) : "—"}</dd>
+            </div>
+          </dl>
+
+          {profile.tags.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {profile.tags.map((t) => (
+                <Badge key={t} variant="secondary">
+                  {t}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Also known as</p>
+            {profile.aliases.length <= 1 ? (
+              <p className="text-muted-foreground">No other names on file.</p>
+            ) : (
+              <ul className="space-y-2">
+                {profile.aliases.map((a) => (
+                  <li key={a.name} className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="truncate">{a.name}</span>
+                      {a.isAccountName ? <Badge variant="outline">Account</Badge> : null}
+                      {a.onThisOrder ? <Badge variant="primary">This order</Badge> : null}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {a.orders ? `${a.orders} ${a.orders === 1 ? "order" : "orders"}` : "saved address"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              Names from the account, its saved addresses, and the shipping and billing names on its last 50 orders.
+            </p>
+          </div>
+
+          {profile.note ? (
+            <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-3 py-2 text-muted-foreground">{profile.note}</p>
+          ) : null}
+        </CardContent>
+      )}
     </Card>
   );
 }
