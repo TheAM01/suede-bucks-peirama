@@ -5,7 +5,10 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="w-full overflow-x-auto">
+  // The wrapper is the table's own scroll box (both axes, capped to the
+  // viewport under the top and bottom bars) so the header can stick to its
+  // top: a sticky header can't stick to the page from inside an overflow box.
+  <div className="relative max-h-[calc(100dvh-7rem)] w-full overflow-auto">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
@@ -19,7 +22,16 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b [&_tr]:border-border", className)} {...props} />
+  <thead
+    ref={ref}
+    // Sticky, opaque header. The row border becomes an inset shadow on the
+    // cells, because collapsed borders scroll away from a sticky row.
+    className={cn(
+      "sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_hsl(var(--border))] [&_tr]:border-b-0",
+      className,
+    )}
+    {...props}
+  />
 ));
 TableHeader.displayName = "TableHeader";
 
