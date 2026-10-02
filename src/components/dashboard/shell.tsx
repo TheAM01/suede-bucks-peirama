@@ -6,6 +6,7 @@ import { StoreProvider } from "@/lib/store";
 import { CurrencyProvider } from "@/components/currency-provider";
 import { DashboardViewProvider } from "@/components/dashboard-view-provider";
 import { DashboardUIProvider } from "./ui-context";
+import { ToastProvider } from "@/components/ui/toast";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { BottomBar } from "./bottom-bar";
@@ -26,32 +27,34 @@ export function DashboardShell({
       <CurrencyProvider>
         <StoreProvider>
           <DashboardUIProvider>
-            {/* --content-left: where the content column starts at lg+, for fixed overlays (SelectionDock). */}
-            <div
-              className="min-h-screen bg-background"
-              style={{ "--content-left": collapsed ? "72px" : "16rem" } as React.CSSProperties}
-            >
-              <Sidebar
-                collapsed={collapsed}
-                onToggleCollapse={() => setCollapsed((c) => !c)}
-                mobileOpen={mobileOpen}
-                onCloseMobile={() => setMobileOpen(false)}
-              />
+            <ToastProvider>
+              {/* --content-left: where the content column starts at lg+, for fixed overlays (SelectionDock). */}
               <div
-                className={cn(
-                  "flex min-h-screen flex-col transition-all duration-300",
-                  collapsed ? "lg:pl-[72px]" : "lg:pl-64",
-                )}
+                className="min-h-screen bg-background"
+                style={{ "--content-left": collapsed ? "72px" : "16rem" } as React.CSSProperties}
               >
-                <Topbar user={user} onOpenMobile={() => setMobileOpen(true)} />
-                <main className="flex-1">
-                  <div className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-8">
-                    {children}
-                  </div>
-                </main>
-                <BottomBar />
+                <Sidebar
+                  collapsed={collapsed}
+                  onToggleCollapse={() => setCollapsed((c) => !c)}
+                  mobileOpen={mobileOpen}
+                  onCloseMobile={() => setMobileOpen(false)}
+                />
+                <div
+                  className={cn(
+                    "flex min-h-screen flex-col transition-all duration-300",
+                    collapsed ? "lg:pl-[72px]" : "lg:pl-64",
+                  )}
+                >
+                  <Topbar user={user} onOpenMobile={() => setMobileOpen(true)} />
+                  <main className="flex-1">
+                    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-8">
+                      {children}
+                    </div>
+                  </main>
+                  <BottomBar />
+                </div>
               </div>
-            </div>
+            </ToastProvider>
           </DashboardUIProvider>
         </StoreProvider>
       </CurrencyProvider>

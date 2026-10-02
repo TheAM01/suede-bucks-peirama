@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Check, Loader2, RotateCcw, X } from "@/components/icons";
+import { Check, Loader2, RotateCcw } from "@/components/icons";
 import { useStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,49 +19,33 @@ type Notice = { tone: "success" | "error"; text: string } | null;
  * Shipments: the tracking board over every consigned order (src/lib/logistics.ts).
  * Ticked parcels get two tracking actions, run through the same order workflow
  * endpoint as the Orders control panel — Mark delivered (in transit only) and
- * Mark returned (RTO).
+ * Mark returned (RTO). Both update the board optimistically; results are toasts.
  */
 export function ShipmentsView() {
   const store = useStore();
-  const [notice, setNotice] = React.useState<Notice>(null);
+  const toast = useToast();
 
   return (
-    <div className="space-y-6">
-      {notice ? (
-        <div
-          className={cn(
-            "flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm",
-            notice.tone === "success"
-              ? "border-success/30 bg-success/10 text-success"
-              : "border-destructive/30 bg-destructive/10 text-destructive",
-          )}
-        >
-          {notice.tone === "success" ? <Check className="mt-0.5 size-4 shrink-0" /> : <AlertCircle className="mt-0.5 size-4 shrink-0" />}
-          <span className="flex-1">{notice.text}</span>
-          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss">
-            <X className="size-4" />
-          </button>
-        </div>
-      ) : null}
-      <ResourceView
-        resourceKey="shipments"
-        selectionBar={(ctx) => (
-          <ShipmentsPanel
-            ctx={ctx}
-            onDone={(n) => {
-              setNotice(n);
-              store.refresh("shipments");
-              store.refresh("orders");
-            }}
-          />
-        )}
-      />
-    </div>
+    <ResourceView
+      resourceKey="shipments"
+      selectionBar={(ctx) => (
+        <ShipmentsPanel
+          ctx={ctx}
+          onDone={(n) => {
+            if (n?.tone === "error") toast.error("Some parcels weren't updated", n.text);
+            else if (n) toast.success(n.text);
+            store.refresh("shipments");
+            store.refresh("orders");
+          }}
+        />
+      )}
+    />
   );
 }
 
 function ShipmentsPanel({ ctx, onDone }: { ctx: SelectionContext; onDone: (n: Notice) => void }) {
   const { rows, clear } = ctx;
+  const store = useStore();
   const [busy, setBusy] = React.useState(false);
   const [returning, setReturning] = React.useState(false);
   const [reason, setReason] = React.useState("");
@@ -71,11 +55,18 @@ function ShipmentsPanel({ ctx, onDone }: { ctx: SelectionContext; onDone: (n: No
 
   async function run(action: OrderAction, payload: Record<string, unknown> = {}) {
     setBusy(true);
+    const stage = action === "mark_delivered" ? "delivered" : "returned";
+    const rollback = store.patchRows("shipments", rows.map((r) => r.id), { stage, stuck: false });
     const errors: string[] = [];
+    const failedIds: string[] = [];
     for (const r of rows) {
       const res = await postOrderAction(r.id, action, payload);
-      if (res.error) errors.push(`${r.number}: ${res.error}`);
+      if (res.error) {
+        errors.push(`${r.number}: ${res.error}`);
+        failedIds.push(r.id);
+      }
     }
+    if (failedIds.length) rollback(failedIds);
     setBusy(false);
     const done = rows.length - errors.length;
     onDone(

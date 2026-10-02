@@ -116,12 +116,24 @@ const config: Config = {
           from: { opacity: "0", transform: "scale(0.97)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
+        /** toast countdown bar — its end is what dismisses the toast */
+        "toast-progress": {
+          from: { transform: "scaleX(1)" },
+          to: { transform: "scaleX(0)" },
+        },
+        "toast-in": {
+          from: { opacity: "0", transform: "translateX(12px)" },
+          to: { opacity: "1", transform: "translateX(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.25s ease-out",
         "scale-in": "scale-in 0.15s ease-out",
+        "toast-in": "toast-in 0.2s ease-out",
+        // duration is set per toast via an inline animation-duration
+        "toast-progress": "toast-progress 4s linear forwards",
       },
     },
   },

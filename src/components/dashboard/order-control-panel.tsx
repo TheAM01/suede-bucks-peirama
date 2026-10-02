@@ -26,6 +26,7 @@ import {
   MODIFY_BUTTON_TABS,
   SHIPPED_STAGES,
   canRun,
+  predictedStatus,
   courierCode,
   defaultCourierFor,
   normalizeCourier,
@@ -183,6 +184,13 @@ export function OrderControlPanel({
     payload: Record<string, unknown> = {},
   ): Promise<void> {
     setBusy(true);
+    // Optimistic: the orders move to the tab the action leads to right away;
+    // any the server refuses (or wants confirmed) are put back below.
+    const rollback = store.patchRows(
+      "orders",
+      targets.map((r) => r.id),
+      (r) => ({ opsStatus: predictedStatus(action, r.opsStatus) }),
+    );
     // One at a time: a batch dispatched onto a "new" sheet must share the sheet
     // the first order opened (per courier), not open one sheet per order.
     const results: { row: Row; res: ActionResponse }[] = [];
@@ -208,6 +216,8 @@ export function OrderControlPanel({
 
     const needConfirm = results.filter((x) => x.res.needsConfirmation);
     const failed = results.filter((x) => x.res.error);
+    const undo = [...needConfirm, ...failed].map((x) => x.row.id);
+    if (undo.length) rollback(undo);
     const done = results.length - needConfirm.length - failed.length;
 
     if (needConfirm.length) {

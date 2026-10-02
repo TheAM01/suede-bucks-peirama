@@ -25,6 +25,7 @@ import {
   renderConsignmentId,
 } from "@/config/consignment-schema";
 import { saveConsignmentTemplateAction } from "@/lib/settings-actions";
+import { useToast } from "@/components/ui/toast";
 import {
   Card,
   CardContent,
@@ -70,14 +71,24 @@ function ConsignmentSchemaCard({ initial }: { initial: string }) {
   const [savedTemplate, setSavedTemplate] = React.useState(initial);
   const [pending, startTransition] = React.useTransition();
   const [message, setMessage] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const toast = useToast();
   // A fixed sample time keeps the preview stable between renders.
   const preview = (t: string) => renderConsignmentId(t, { ...SAMPLE_CONSIGNMENT_VALUES, ms: 1790000000000 });
 
   function save() {
+    // Optimistic: the new schema counts as saved at once; reverted if the server refuses.
+    const previous = savedTemplate;
+    setSavedTemplate(template);
     startTransition(async () => {
       const res = await saveConsignmentTemplateAction(template);
-      if (res.ok) setSavedTemplate(template);
-      setMessage(res.ok ? { ok: true, text: "Saved" } : { ok: false, text: res.message ?? "Couldn't save." });
+      if (res.ok) {
+        setMessage({ ok: true, text: "Saved" });
+        toast.success("Consignment ID schema saved", "New consignments use it from now on.");
+      } else {
+        setSavedTemplate(previous);
+        setMessage({ ok: false, text: res.message ?? "Couldn't save." });
+        toast.error("Schema not saved", res.message ?? undefined);
+      }
     });
   }
 

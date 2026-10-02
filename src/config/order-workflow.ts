@@ -125,6 +125,43 @@ export function canRun(action: OrderAction, status: unknown, _courier?: unknown)
 }
 
 /**
+ * The stage an action will leave an order in, for optimistic UI (the server
+ * decides for real — see runOrderAction()). Mirrors its transitions.
+ */
+export function predictedStatus(action: OrderAction, from: unknown): string {
+  const f = String(from ?? "");
+  switch (action) {
+    case "move_active":
+    case "unpackage":
+      return "active";
+    case "move_exception":
+      return "exception";
+    case "discard":
+      return "canceled";
+    case "create_package":
+      return "packaged";
+    case "assign_consignment":
+      return "finalized";
+    case "print_label":
+      return "in_pickup_packing";
+    case "dispatch":
+      return "dispatched";
+    case "mark_fulfilled":
+      return "fulfilled";
+    case "mark_delivered":
+      return "delivered";
+    case "mark_returned":
+      return "returned";
+    case "remove_from_sheet":
+      return "in_pickup_packing";
+    case "cancel":
+      return f === "in_pickup_packing" ? "finalized" : "canceled";
+    default:
+      return f;
+  }
+}
+
+/**
  * Couriers offered when assigning a consignment (a custom name can be typed
  * too). `code` is what `<courier-name>` becomes in a generated consignment ID
  * (src/config/consignment-schema.ts).

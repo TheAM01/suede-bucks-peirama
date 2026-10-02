@@ -19,6 +19,8 @@ npm run dev      # dev server, http://localhost:3000
 npm run build    # production build
 npm run start    # run a production build
 npm run lint     # ESLint (eslint.config.mjs)
+npm run seed:orders            # dry run: 20 fictional US orders for the connected Shopify store
+npm run seed:orders -- --yes   # create them (tagged suedebucks-seed); add --delete to remove them
 ```
 
 There is no test suite/runner configured in this repo.

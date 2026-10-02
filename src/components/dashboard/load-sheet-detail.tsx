@@ -22,6 +22,7 @@ import { postOrderAction } from "./order-control-panel";
 import { ScanIntoSheetButton } from "./scanners";
 import { SheetPicker, openSheetsFor, type SheetChoice } from "./sheet-picker";
 import { useResource } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import { statusLabel } from "@/config/order-workflow";
 import { useStore } from "@/lib/store";
 import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
@@ -65,6 +66,16 @@ export function LoadSheetDetailView({
   const store = useStore();
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const toast = useToast();
+  // Optimistic overlay on the server-rendered detail: a sheet patch and parcels
+  // taken off, both tied to the detail they were made against — a fresh server
+  // render (router.refresh) replaces them with the real thing.
+  const [overlay, setOverlay] = React.useState<{
+    for: LoadSheetDetail | null;
+    patch: Record<string, unknown>;
+    gone: Set<string>;
+  }>({ for: detail, patch: {}, gone: new Set() });
+  const live = overlay.for === detail ? overlay : { for: detail, patch: {}, gone: new Set<string>() };
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [moving, setMoving] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
@@ -97,17 +108,28 @@ export function LoadSheetDetailView({
     );
   }
 
-  const { sheet, parcels, warning } = detail;
+  const sheet = { ...detail.sheet, ...live.patch };
+  const parcels = detail.parcels.filter((p) => !live.gone.has(p.orderId));
+  const { warning } = detail;
   const status = STATUS_BADGE[String(sheet.status)] ?? { label: String(sheet.status), variant: "outline" as const };
   const reconciled = sheet.reconciliation === "reconciled";
 
-  async function save(patch: Record<string, unknown>) {
+  async function save(patch: Record<string, unknown>, done: string) {
     setBusy(true);
     setActionError(null);
+    const prior = live;
+    setOverlay({ ...live, patch: { ...live.patch, ...patch } });
     const res = await store.update("dispatch", id, { ...sheet, ...patch });
     setBusy(false);
-    if (!res.ok) setActionError(res.error ?? "Couldn't save the change.");
-    else router.refresh();
+    if (!res.ok) {
+      setOverlay(prior);
+      const reason = res.error ?? "Couldn't save the change.";
+      setActionError(reason);
+      toast.error(`${String(sheet.reference)} wasn't updated`, reason);
+    } else {
+      toast.success(done, `Load sheet ${String(sheet.reference)}`);
+      router.refresh();
+    }
   }
 
   const isDraft = sheet.status === "draft";
@@ -125,16 +147,33 @@ export function LoadSheetDetailView({
   async function runOnPicked(action: "remove_from_sheet" | "move_to_sheet", choice?: SheetChoice) {
     setBusy(true);
     setActionError(null);
+    const batch = pickedParcels;
+    // They leave this sheet's list at once; any the server refuses come back.
+    const gone = new Set(live.gone);
+    for (const p of batch) gone.add(p.orderId);
+    setOverlay({ ...live, gone });
+    setPicked(new Set());
     const errors: string[] = [];
+    const kept: string[] = [];
     let target = choice?.target;
-    for (const p of pickedParcels) {
+    for (const p of batch) {
       const res = await postOrderAction(p.orderId, action, target ? { target, location: choice?.location } : {});
-      if (res.error) errors.push(`${p.number || p.consignmentId}: ${res.error}`);
-      else if (target === "new" && res.loadSheetId) target = res.loadSheetId;
+      if (res.error) {
+        errors.push(`${p.number || p.consignmentId}: ${res.error}`);
+        kept.push(p.orderId);
+      } else if (target === "new" && res.loadSheetId) target = res.loadSheetId;
     }
     setBusy(false);
-    setPicked(new Set());
-    if (errors.length) setActionError(errors.join(" · "));
+    if (kept.length) {
+      setOverlay((o) => ({ ...o, gone: new Set([...o.gone].filter((x) => !kept.includes(x))) }));
+    }
+    const ok = batch.length - errors.length;
+    const verb = action === "remove_from_sheet" ? "Removed from" : "Moved off";
+    if (errors.length) {
+      setActionError(errors.join(" · "));
+      toast.error(`${errors.length} of ${batch.length} parcels weren't changed`, errors.join(" · "));
+    }
+    if (ok) toast.success(`${verb} ${String(sheet.reference)} — ${ok} ${ok === 1 ? "parcel" : "parcels"}`);
     refreshAll();
   }
 
@@ -164,19 +203,19 @@ export function LoadSheetDetailView({
             <ScanIntoSheetButton sheetId={id} reference={String(sheet.reference)} onDone={refreshAll} />
           ) : null}
           {sheet.status === "draft" ? (
-            <Button onClick={() => save({ status: "posted" })} disabled={busy}>
+            <Button onClick={() => save({ status: "posted" }, "Posted — handed to courier")} disabled={busy}>
               <Send />
               Post — handed to courier
             </Button>
           ) : null}
           {sheet.status !== "draft" && !reconciled ? (
-            <Button variant="outline" onClick={() => save({ reconciliation: "reconciled" })} disabled={busy}>
+            <Button variant="outline" onClick={() => save({ reconciliation: "reconciled" }, "COD marked reconciled")} disabled={busy}>
               <Check />
               Mark COD reconciled
             </Button>
           ) : null}
           {sheet.status === "posted" ? (
-            <Button variant="outline" onClick={() => save({ status: "archived" })} disabled={busy}>
+            <Button variant="outline" onClick={() => save({ status: "archived" }, "Archived")} disabled={busy}>
               <Archive />
               Archive
             </Button>

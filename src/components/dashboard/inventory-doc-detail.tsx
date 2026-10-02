@@ -29,6 +29,7 @@ import {
   type InventoryDocKind,
 } from "@/config/inventory-docs";
 import { useResource, useStore } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import { formatCurrency, formatDate, formatDateTime, formatNumber, cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +85,26 @@ const toEdit = (l: DocLine): EditLine => ({
 
 type DialogKind = "ship" | "receive" | "close" | "cancel" | "send" | "post" | "place" | null;
 
+/** Steps whose resulting status is certain, shown before the server answers. */
+const OPTIMISTIC_STATUS: Partial<Record<DocAction, (from: string) => string>> = {
+  place: () => "ordered",
+  ship: (from) => (from === "ordered" ? "in_transit" : from),
+  close: () => "closed",
+  cancel: () => "cancelled",
+};
+
+const DONE_MESSAGE: Partial<Record<DocAction, string>> = {
+  set_lines: "Items saved",
+  load_location: "Items loaded",
+  place: "Order placed",
+  ship: "Shipping details saved",
+  send: "Stock sent",
+  receive: "Stock received",
+  post: "Counts posted",
+  close: "Closed",
+  cancel: "Cancelled",
+};
+
 /**
  * One purchase order, transfer, or stocktake: header facts, stage buttons
  * (only those valid for the current status — DOC_ACTION_FROM), the line
@@ -101,6 +122,7 @@ export function InventoryDocDetail({
   error: string | null;
 }) {
   const store = useStore();
+  const toast = useToast();
   const [doc, setDoc] = React.useState<Row | null>(initial);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
@@ -142,12 +164,21 @@ export function InventoryDocDetail({
   async function act(action: DocAction, payload: Record<string, unknown> = {}): Promise<boolean> {
     setBusy(true);
     setActionError(null);
+    // Steps whose outcome is certain show it straight away; ones that depend
+    // on Shopify (send / receive / post) wait for the answer.
+    const before = doc;
+    const predicted = OPTIMISTIC_STATUS[action]?.(String(doc!.status));
+    if (predicted) setDoc((d) => (d ? { ...d, status: predicted } : d));
     const res = await postDocAction(kind, id, action, payload);
     setBusy(false);
     if (res.error || !res.row) {
-      setActionError(res.error ?? "Something went wrong.");
+      if (predicted) setDoc(before);
+      const reason = res.error ?? "Something went wrong.";
+      setActionError(reason);
+      toast.error(`${noun} ${String(doc!.number)} wasn't updated`, reason);
       return false;
     }
+    toast.success(DONE_MESSAGE[action] ?? "Saved", `${noun} ${String(res.row.number)}`);
     setDoc(res.row);
     setEdit(((res.row.lines as DocLine[]) ?? []).map(toEdit));
     setDirty(false);

@@ -77,6 +77,17 @@ const isPast = (d: unknown) => Boolean(d) && String(d) < todayIso();
 const isWithinDays = (d: unknown, days: number) =>
   Boolean(d) && Date.now() - Date.parse(String(d)) <= days * 86_400_000;
 
+/** Order shipping types (bucketed by shippingType() in src/lib/shopify-reads.ts) for the Orders "Ship" indicator. */
+const SHIPPING_TYPE_OPTIONS: { value: string; label: string; short: string; variant: BadgeVariant }[] = [
+  { value: "standard", label: "Standard shipping", short: "STD", variant: "secondary" },
+  { value: "express", label: "Express shipping", short: "EXP", variant: "warning" },
+  { value: "overnight", label: "Overnight / same-day", short: "ON", variant: "destructive" },
+  { value: "economy", label: "Economy shipping", short: "ECO", variant: "outline" },
+  { value: "free", label: "Free shipping", short: "FREE", variant: "success" },
+  { value: "pickup", label: "Local pickup", short: "PICK", variant: "info" },
+  { value: "none", label: "No shipping (POS or not shipped)", short: "—", variant: "outline" },
+];
+
 const MOVEMENT_TYPE_OPTIONS: { value: string; label: string; variant: BadgeVariant }[] = [
   { value: "sale", label: "Sale", variant: "secondary" },
   { value: "receipt", label: "PO receipt", variant: "success" },
@@ -811,10 +822,12 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     icon: ShoppingCart,
     subtitle: "Incoming and fulfilled orders",
     guide: "orders",
-    searchKeys: ["number", "customer", "customerAccount", "consignmentId"],
+    searchKeys: ["number", "customer", "customerAccount", "consignmentId", "shippingMethod"],
     rowHref: (r) => `/dashboard/orders/${r.id}`,
     tabs: { field: "opsStatus", options: ORDER_OPS_OPTIONS },
     columns: [
+      // Shipping type at a glance, first thing after the checkbox (full method name on hover).
+      { key: "shippingType", header: "Ship", type: "indicator" },
       { key: "number", header: "Order", type: "primary", sub: "customer" },
       { key: "opsStatus", header: "Status", type: "status" },
       { key: "city", header: "City", type: "muted" },
@@ -834,6 +847,13 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       { key: "createdAt", header: "Date", type: "date" },
     ],
     fields: [
+      {
+        key: "shippingType",
+        label: "Shipping",
+        type: "status",
+        hidden: true,
+        options: SHIPPING_TYPE_OPTIONS,
+      },
       { key: "number", label: "Order #", type: "text", required: true, half: true },
       { key: "customer", label: "Customer", type: "text", required: true, half: true },
       { key: "total", label: "Total", type: "currency", half: true },

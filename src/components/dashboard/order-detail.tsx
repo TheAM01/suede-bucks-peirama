@@ -24,6 +24,7 @@ import {
 import type { OrderOpsDoc } from "@/lib/order-ops";
 import { ORDER_STATUS_OPTIONS, canRun, statusLabel } from "@/config/order-workflow";
 import { OrderEditDrawer } from "./order-control-panel";
+import { useToast } from "@/components/ui/toast";
 import type {
   OrderDetail,
   TimelineEntry,
@@ -213,6 +214,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState(false);
+  const toast = useToast();
 
   // No state is touched before the first await, so mounting this doesn't
   // cascade a render. `isStale` drops a response whose request has been
@@ -344,6 +346,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
           onClose={() => setEditing(false)}
           onSaved={() => {
             setEditing(false);
+            toast.success("Customer details saved", `${order.number} updated in Shopify`);
             void load();
           }}
         />

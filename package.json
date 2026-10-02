@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:orders": "node scripts/seed-orders.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

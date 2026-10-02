@@ -28,6 +28,8 @@ export interface FieldOption {
   value: string;
   label: string;
   variant?: BadgeVariant;
+  /** 2–4 letter code for compact `indicator` columns (the full label becomes its tooltip) */
+  short?: string;
 }
 
 /** Populate a select's options live from another resource's rows. */
@@ -75,7 +77,9 @@ export type ColumnType =
   | "date"
   | "datetime"
   | "index"
-  | "tags";
+  | "tags"
+  /** a small coded chip (the option's `short`), full label on hover — for at-a-glance types like shipping */
+  | "indicator";
 
 export interface ResourceColumn {
   key: string;

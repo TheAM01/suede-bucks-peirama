@@ -113,6 +113,23 @@ async function readCustomers(): Promise<ShopifyReadResult> {
   return { rows };
 }
 
+/**
+ * Bucket an order's shipping line into a type for the Orders table's
+ * indicator, from its title / code (and a zero price → free). No shipping line
+ * at all means nothing was shipped (POS, or local pickup).
+ */
+function shippingType(o: unknown): string {
+  const line = get(o, "shippingLine");
+  if (!line) return "none";
+  const text = `${str(get(line, "title"))} ${str(get(line, "code"))}`.toLowerCase();
+  if (/pick\s?up|collect|in.?store/.test(text)) return "pickup";
+  if (/overnight|next.?day|same.?day/.test(text)) return "overnight";
+  if (/express|priority|expedit|rush|2.?day/.test(text)) return "express";
+  if (/free/.test(text) || num(get(line, "originalPriceSet", "shopMoney", "amount")) === 0) return "free";
+  if (/econom|saver|slow/.test(text)) return "economy";
+  return "standard";
+}
+
 async function readOrders(): Promise<ShopifyReadResult> {
   const q = `{
     orders(first: 100, sortKey: CREATED_AT, reverse: true) {
@@ -122,6 +139,7 @@ async function readOrders(): Promise<ShopifyReadResult> {
         customer { displayName }
         shippingAddress { city name }
         billingAddress { name }
+        shippingLine { title code originalPriceSet { shopMoney { amount } } }
         subtotalPriceSet { shopMoney { amount } }
         totalDiscountsSet { shopMoney { amount } }
         totalShippingPriceSet { shopMoney { amount } }
@@ -164,6 +182,8 @@ async function readOrders(): Promise<ShopifyReadResult> {
         str(get(o, "customer", "displayName")) ||
         "Guest",
       customerAccount: str(get(o, "customer", "displayName")),
+      shippingMethod: str(get(o, "shippingLine", "title")),
+      shippingType: shippingType(o),
       city: str(get(o, "shippingAddress", "city")),
       courier: courier || "",
       gateway: Array.isArray(o.paymentGatewayNames)

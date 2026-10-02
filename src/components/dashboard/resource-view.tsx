@@ -26,6 +26,7 @@ import type {
 import { statusVariant } from "@/config/resource-types";
 import { getResource } from "@/config/resources";
 import { useResource, useStore } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import { useDashboardUI } from "./ui-context";
 import { formatCurrency, formatDate, formatDateTime, formatNumber, cn } from "@/lib/utils";
 import { Segmented } from "@/components/ui/segmented";
@@ -115,6 +116,20 @@ function Cell({
       const { label, variant } = statusVariant(config, col.key, val);
       return <Badge variant={variant}>{label}</Badge>;
     }
+    case "indicator": {
+      const opt = config.fields.find((f) => f.key === col.key)?.options?.find((o) => o.value === val);
+      if (!opt) return <span className="text-muted-foreground">—</span>;
+      return (
+        <Badge
+          variant={opt.variant ?? "outline"}
+          title={opt.label}
+          aria-label={opt.label}
+          className="min-w-10 justify-center px-1.5 text-[10px] font-semibold uppercase tracking-wide"
+        >
+          {opt.short ?? opt.label}
+        </Badge>
+      );
+    }
     case "tags": {
       const tags = Array.isArray(val) ? val.filter((t): t is string => typeof t === "string") : [];
       if (tags.length === 0) return <span className="text-muted-foreground">—</span>;
@@ -158,6 +173,7 @@ export function ResourceView({
   const config = getResource(resourceKey);
   const router = useRouter();
   const store = useStore();
+  const toast = useToast();
   const { rows, loading, readOnly, source, error } = useResource(resourceKey);
   const caps = config?.capabilities ?? {};
   const canCreate = !readOnly && caps.create !== false;
@@ -255,26 +271,42 @@ export function ResourceView({
     setValues(initialValues(config!, row));
     setDrawerOpen(true);
   }
+  /**
+   * Optimistic save: the drawer closes and the row updates (or a pending row
+   * appears) straight away. If the server refuses, the change is rolled back
+   * and the drawer reopens with what was typed and the reason.
+   */
   async function handleSave() {
     if (saving) return;
-    setSaving(true);
     setMutationError(null);
     const data = coerceValues(config!, values);
-    const result = editing
-      ? await store.update(resourceKey, editing.id, data)
+    const wasEditing = editing;
+    const typed = values;
+    const noun = config!.singular.toLowerCase();
+    setDrawerOpen(false);
+    setSaving(true);
+    const result = wasEditing
+      ? await store.update(resourceKey, wasEditing.id, data)
       : await store.create(resourceKey, data);
     setSaving(false);
     if (!result.ok) {
-      setMutationError(result.error ?? "Something went wrong.");
+      const reason = result.error ?? "Something went wrong.";
+      toast.error(wasEditing ? `Couldn't save the ${noun}` : `Couldn't create the ${noun}`, reason);
+      setEditing(wasEditing);
+      setValues(typed);
+      setMutationError(reason);
+      setDrawerOpen(true);
       return;
     }
-    setDrawerOpen(false);
+    toast.success(wasEditing ? `${config!.singular} saved` : `${config!.singular} created`);
   }
   async function handleDelete() {
     if (!deleting) return;
-    const result = await store.remove(resourceKey, deleting.id);
+    const target = deleting;
     setDeleting(null);
-    if (!result.ok) setMutationError(result.error ?? "Delete failed.");
+    const result = await store.remove(resourceKey, target.id);
+    if (!result.ok) toast.error(`Couldn't delete the ${config!.singular.toLowerCase()}`, result.error);
+    else toast.success(`${config!.singular} deleted`);
   }
 
   function toggleSort(key: string) {
@@ -302,9 +334,11 @@ export function ResourceView({
   async function handleBulkMove(status: string) {
     if (!config?.tabs || selected.size === 0) return;
     setBulkBusy(true);
-    setMutationError(null);
     const field = config.tabs.field;
     const ids = Array.from(selected);
+    const label = config.tabs.options.find((o) => o.value === status)?.label ?? status;
+    // Rows move tabs immediately (store.update is optimistic); clear the selection with them.
+    setSelected(new Set());
     // Send the full row, not just the changed field: some app-owned resources
     // (dispatch/return-load-sheets) validate a complete object on update, the
     // same as a single-row edit submits every field from the drawer form.
@@ -316,20 +350,27 @@ export function ResourceView({
       }),
     );
     setBulkBusy(false);
-    const failed = results.filter((r) => !r.ok).length;
-    setMutationError(failed > 0 ? `${failed} of ${ids.length} couldn't be updated.` : null);
-    setSelected(new Set());
+    reportBulk(results, ids.length, `Moved to ${label}`, "moved");
+  }
+
+  function reportBulk(results: { ok: boolean; error?: string }[], total: number, done: string, verb: string) {
+    const failed = results.filter((r) => !r.ok);
+    const plural = total === 1 ? config!.singular.toLowerCase() : config!.plural.toLowerCase();
+    if (failed.length === 0) toast.success(`${done} — ${total} ${plural}`);
+    else
+      toast.error(
+        `${failed.length} of ${total} couldn't be ${verb}`,
+        Array.from(new Set(failed.map((r) => r.error).filter(Boolean))).join(" · ") || undefined,
+      );
   }
   async function handleBulkDelete() {
     setBulkBusy(true);
-    setMutationError(null);
     const ids = Array.from(selected);
+    setBulkDeleting(false);
+    setSelected(new Set());
     const results = await Promise.all(ids.map((id) => store.remove(resourceKey, id)));
     setBulkBusy(false);
-    setBulkDeleting(false);
-    const failed = results.filter((r) => !r.ok).length;
-    setMutationError(failed > 0 ? `${failed} of ${ids.length} couldn't be deleted.` : null);
-    setSelected(new Set());
+    reportBulk(results, ids.length, "Deleted", "deleted");
   }
 
   return (
@@ -339,12 +380,6 @@ export function ResourceView({
         <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm text-foreground">
           <AlertCircle className="size-4 shrink-0 text-warning" />
           <span>{error}</span>
-        </div>
-      ) : null}
-      {mutationError && !drawerOpen ? (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" />
-          <span>{mutationError}</span>
         </div>
       ) : null}
 
@@ -513,7 +548,10 @@ export function ResourceView({
                     className={cn(
                       "group",
                       (href || (canEdit && !locked)) && "cursor-pointer",
+                      // a just-created row waiting for the server's copy
+                      row._pending ? "pointer-events-none opacity-60" : undefined,
                     )}
+                    aria-busy={row._pending ? true : undefined}
                     onClick={() => openRow(row)}
                   >
                     {selectable ? (
