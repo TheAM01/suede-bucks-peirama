@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { apiGuard } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { getResource } from "@/config/resources";
 import { SHOPIFY_WRITERS } from "@/lib/shopify-writes";
 import { isAppOwned, updateAppRow, deleteAppRow } from "@/lib/app-data";
@@ -13,15 +14,14 @@ import { prepareRegister } from "@/lib/pos";
 
 export const dynamic = "force-dynamic";
 
+/** Every write here needs Manage on the resource's page. */
 async function guard(ctx: { params: Promise<{ resource: string; id: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return { fail: NextResponse.json({ error: "unauthorized" }, { status: 401 }) };
-  }
   const { resource, id } = await ctx.params;
   if (!getResource(resource)) {
     return { fail: NextResponse.json({ error: "unknown resource" }, { status: 404 }) };
   }
+  const g = await apiGuard((u) => can(u, resource, "manage"));
+  if (g.fail) return { fail: g.fail };
   return { resource, id };
 }
 

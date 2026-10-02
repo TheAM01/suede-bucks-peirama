@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Segmented } from "@/components/ui/segmented";
 import { ResourceView } from "./resource-view";
 import { ScanLoadSheetButton } from "./scanners";
+import { useAccess } from "@/components/access-provider";
 
 type SubTab = "dispatch" | "returns";
 
@@ -18,7 +19,10 @@ type SubTab = "dispatch" | "returns";
  */
 export function DispatchReturnsView({ initialTab }: { initialTab: SubTab }) {
   const router = useRouter();
+  const access = useAccess();
   const [tab, setTab] = React.useState<SubTab>(initialTab);
+  // The switch only makes sense when this account can open both halves.
+  const both = access.canOpen("/dashboard/dispatch") && access.canOpen("/dashboard/returns");
 
   function change(next: SubTab) {
     setTab(next);
@@ -27,18 +31,20 @@ export function DispatchReturnsView({ initialTab }: { initialTab: SubTab }) {
 
   return (
     <div className="space-y-6">
-      <Segmented
-        value={tab}
-        onChange={change}
-        options={[
-          { value: "dispatch", label: "Dispatch" },
-          { value: "returns", label: "Returns" },
-        ]}
-      />
+      {both ? (
+        <Segmented
+          value={tab}
+          onChange={change}
+          options={[
+            { value: "dispatch", label: "Dispatch" },
+            { value: "returns", label: "Returns" },
+          ]}
+        />
+      ) : null}
       <ResourceView
         key={tab}
         resourceKey={tab}
-        toolbar={tab === "dispatch" ? <ScanLoadSheetButton /> : undefined}
+        toolbar={tab === "dispatch" && access.can("dispatch", "manage") ? <ScanLoadSheetButton /> : undefined}
       />
     </div>
   );

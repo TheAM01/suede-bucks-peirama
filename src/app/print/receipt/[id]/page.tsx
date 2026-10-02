@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requireAccess } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { readOrderDetail } from "@/lib/shopify-order-detail";
 import { shopifyQuery } from "@/lib/shopify-client";
 import { POS_ATTR } from "@/config/pos";
@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Receipt" };
  * any time from the order's page.
  */
 export default async function ReceiptPage({ params }: { params: Promise<{ id: string }> }) {
-  if (!(await getCurrentUser())) redirect("/login");
+  await requireAccess("/print/receipt", (u) => can(u, "orders", "view") || can(u, "till", "manage"));
   const { id } = await params;
   const [{ order, error }, shop] = await Promise.all([
     readOrderDetail(id),

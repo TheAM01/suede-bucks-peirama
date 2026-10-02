@@ -35,11 +35,17 @@ Integrations page (OAuth client credentials), not env vars.
 
 ### Auth
 
-Single admin account, no signup: credentials come from `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars
-(checked in `src/lib/auth.ts`). `src/lib/session.ts` is edge-safe (Web Crypto only, no
-`next/headers`) and signs a `base64url(payload).base64url(hmac)` cookie — it's imported from both
-server components/actions (via `src/lib/auth.ts`) and `src/proxy.ts`. `src/proxy.ts` gates every
-`/dashboard/*` route and `/login`, redirecting based on session validity.
+The **Owner** account comes from `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars and always has every
+permission. Other **users** are created on the Users page (`src/lib/users.ts`, MongoDB `app_users`,
+scrypt hashes, temporary password → forced change) with a per-page `none`/`view`/`manage` checklist
+(`src/config/permissions.ts`). `src/lib/session.ts` is edge-safe (Web Crypto only, no
+`next/headers`) and signs a `base64url(payload).base64url(hmac)` cookie (users' cookies carry `uid` +
+`sessionVersion`). `src/proxy.ts` only checks the cookie's signature; the real checks are in
+`src/lib/guard.ts`:
+**every dashboard page must call `requirePage(path, level)`**, route handlers `apiGuard`, server
+actions `actionGuard` (layouts don't re-run on client navigation, so they can't gate pages). When you
+add a page, give it a guard; when you add a sidebar page, it automatically becomes a permission area.
+`getCurrentUser()` re-reads the user each request, so permission changes and revocations apply at once.
 
 ### The generic resource engine
 

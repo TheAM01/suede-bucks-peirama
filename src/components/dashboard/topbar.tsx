@@ -15,8 +15,10 @@ import {
   User,
   LogOut,
   ChevronDown,
+  UsersRound,
 } from "@/components/icons";
 import { navItemForPath } from "@/config/nav";
+import { useAccess } from "@/components/access-provider";
 import type { CurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/auth-actions";
 import { useDashboardUI } from "./ui-context";
@@ -42,6 +44,7 @@ export function Topbar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const access = useAccess();
   const { search, setSearch } = useDashboardUI();
   const [mobileSearch, setMobileSearch] = React.useState(false);
   const showMobileSearch = mobileSearch || search.length > 0;
@@ -168,14 +171,22 @@ export function Topbar({
               </div>
             </div>
             <MenuSeparator />
-            <MenuLink href="/dashboard/settings">
+            <MenuLink href="/dashboard/account">
               <User />
-              Profile &amp; account
+              Account &amp; password
             </MenuLink>
-            <MenuLink href="/dashboard/settings">
-              <Settings2 />
-              Store settings
-            </MenuLink>
+            {access.canOpen("/dashboard/users") ? (
+              <MenuLink href="/dashboard/users">
+                <UsersRound />
+                Users
+              </MenuLink>
+            ) : null}
+            {access.canOpen("/dashboard/settings") ? (
+              <MenuLink href="/dashboard/settings">
+                <Settings2 />
+                Store settings
+              </MenuLink>
+            ) : null}
             <MenuSeparator />
             <form action={logoutAction}>
               <button

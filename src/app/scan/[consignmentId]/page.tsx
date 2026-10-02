@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requireAccess } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { scanPath } from "@/config/order-workflow";
 import { ScanAdvance } from "./scan-advance";
 
@@ -21,9 +21,7 @@ export default async function ScanPage({
 }) {
   const { consignmentId: raw } = await params;
   const consignmentId = decodeURIComponent(raw);
-  if (!(await getCurrentUser())) {
-    redirect(`/login?next=${encodeURIComponent(scanPath(consignmentId))}`);
-  }
+  await requireAccess(scanPath(consignmentId), (u) => can(u, "orders", "manage") || can(u, "dispatch", "manage"));
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">

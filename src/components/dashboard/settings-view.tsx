@@ -24,7 +24,8 @@ import {
   SAMPLE_CONSIGNMENT_VALUES,
   renderConsignmentId,
 } from "@/config/consignment-schema";
-import { saveConsignmentTemplateAction } from "@/lib/settings-actions";
+import { saveConsignmentTemplateAction, savePosOutOfStockAction } from "@/lib/settings-actions";
+import { can } from "@/config/permissions";
 import { useToast } from "@/components/ui/toast";
 import {
   Card,
@@ -66,7 +67,7 @@ const NOTIFICATIONS = [
 ];
 
 /** Store-wide (server-side) — applies to every consignment assigned from now on. */
-function ConsignmentSchemaCard({ initial }: { initial: string }) {
+function ConsignmentSchemaCard({ initial, canEdit }: { initial: string; canEdit: boolean }) {
   const [template, setTemplate] = React.useState(initial);
   const [savedTemplate, setSavedTemplate] = React.useState(initial);
   const [pending, startTransition] = React.useTransition();
@@ -108,6 +109,7 @@ function ConsignmentSchemaCard({ initial }: { initial: string }) {
           <Label htmlFor="consignment-template">Schema</Label>
           <Select
             id="consignment-template"
+            disabled={!canEdit}
             value={template}
             onChange={(e) => {
               setTemplate(e.target.value);
@@ -143,7 +145,7 @@ function ConsignmentSchemaCard({ initial }: { initial: string }) {
             {message.text}
           </span>
         ) : null}
-        <Button onClick={save} disabled={pending || template === savedTemplate}>
+        <Button onClick={save} disabled={!canEdit || pending || template === savedTemplate}>
           {message?.ok ? <Check /> : null}
           {pending ? "Saving…" : "Save schema"}
         </Button>
@@ -152,13 +154,60 @@ function ConsignmentSchemaCard({ initial }: { initial: string }) {
   );
 }
 
+/** Till behaviour — store-wide (server-side). Enforced by the sale API, not just the till screen. */
+function PosSettingsCard({ initial, canEdit }: { initial: boolean; canEdit: boolean }) {
+  const toast = useToast();
+  const [allow, setAllow] = React.useState(initial);
+  const [pending, startTransition] = React.useTransition();
+
+  function change(next: boolean) {
+    // Optimistic: flip now, revert if the server refuses.
+    setAllow(next);
+    startTransition(async () => {
+      const res = await savePosOutOfStockAction(next);
+      if (res.ok) toast.success(next ? "Out-of-stock sales allowed" : "Out-of-stock sales blocked", "Applies to every till from its next sale.");
+      else {
+        setAllow(!next);
+        toast.error("Setting not saved", res.message);
+      }
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Store className="size-4 text-primary" /> Till
+        </CardTitle>
+        <CardDescription>How the point-of-sale till behaves at every register.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Sell items that are out of stock</p>
+            <p className="text-sm text-muted-foreground">
+              {allow
+                ? "On: the till sells an item even when its store shows 0 (or fewer than the cart) — useful when the count is behind and the item is in hand. Stock can go negative."
+                : "Off: the till won't sell more of an item than its store has in stock. Out-of-stock items are greyed out."}
+            </p>
+          </div>
+          <Switch checked={allow} onCheckedChange={change} disabled={!canEdit || pending} aria-label="Sell items that are out of stock" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function SettingsView({
   user,
   consignmentTemplate,
+  posAllowOutOfStock,
 }: {
   user: CurrentUser;
   consignmentTemplate: string;
+  posAllowOutOfStock: boolean;
 }) {
+  const canEditSettings = can(user, "settings", "manage");
   const { currency, setCurrency } = useCurrency();
   const { view, setView } = useDashboardView();
   const [saved, setSaved] = React.useState(false);
@@ -249,7 +298,9 @@ export function SettingsView({
         </CardFooter>
       </Card>
 
-      <ConsignmentSchemaCard initial={consignmentTemplate} />
+      <ConsignmentSchemaCard initial={consignmentTemplate} canEdit={canEditSettings} />
+
+      <PosSettingsCard initial={posAllowOutOfStock} canEdit={canEditSettings} />
 
       {/* Dashboard view */}
       <Card>

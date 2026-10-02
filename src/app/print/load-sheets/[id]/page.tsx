@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requireAccess } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { getLoadSheetDetail } from "@/lib/load-sheet-detail";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { AutoPrint } from "../../labels/auto-print";
@@ -18,7 +18,7 @@ export default async function LoadSheetManifestPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  if (!(await getCurrentUser())) redirect("/login");
+  await requireAccess("/print/load-sheets", (u) => can(u, "dispatch", "view"));
   const { id } = await params;
   const { detail, error } = await getLoadSheetDetail(id);
 

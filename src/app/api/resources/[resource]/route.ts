@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { apiGuard } from "@/lib/guard";
+import { can, canRead } from "@/config/permissions";
 import { getResource } from "@/config/resources";
 import { readIntegrations } from "@/lib/integrations";
 import { SHOPIFY_READERS } from "@/lib/shopify-reads";
@@ -35,27 +36,28 @@ export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ resource: string }> },
 ) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
   const { resource } = await ctx.params;
   if (!getResource(resource)) {
     return NextResponse.json({ error: "unknown resource" }, { status: 404 });
   }
+  const g = await apiGuard((u) => canRead(u, resource));
+  if (g.fail) return g.fail;
+  // View-only users (or ones reading this through another page) get the rows but no write controls.
+  const viewOnly = !can(g.user, resource, "manage");
 
   if (resource === "stock-adjustments") {
     const { rows, error } = await listAdjustments();
-    return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
+    return NextResponse.json({ rows, source: "db", readOnly: viewOnly, error: error ?? null });
   }
 
   if (resource === "dispatch" || resource === "return-load-sheets") {
     const { rows, error } = await listLoadSheets(resource as LoadSheetResource);
-    return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
+    return NextResponse.json({ rows, source: "db", readOnly: viewOnly, error: error ?? null });
   }
 
   if (isInventoryDocKind(resource)) {
     const { rows, error } = await listDocs(resource);
-    return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
+    return NextResponse.json({ rows, source: "db", readOnly: viewOnly, error: error ?? null });
   }
 
   if (resource === "stock-movements" || resource === "inbound") {
@@ -67,7 +69,7 @@ export async function GET(
   // its config turns off create / edit / delete.
   if (resource === "shipments") {
     const { rows, error } = await listShipments();
-    return NextResponse.json({ rows, source: "db", readOnly: false, error: error ?? null });
+    return NextResponse.json({ rows, source: "db", readOnly: viewOnly, error: error ?? null });
   }
 
   if (isAppOwned(resource)) {
@@ -75,7 +77,7 @@ export async function GET(
     return NextResponse.json({
       rows,
       source: "db",
-      readOnly: false,
+      readOnly: viewOnly,
       error: error ?? null,
     });
   }
@@ -101,7 +103,7 @@ export async function GET(
   return NextResponse.json({
     rows,
     source: "shopify",
-    readOnly: !SHOPIFY_WRITERS[resource],
+    readOnly: viewOnly || !SHOPIFY_WRITERS[resource],
     error: error ?? null,
   });
 }
@@ -110,13 +112,12 @@ export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ resource: string }> },
 ) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
   const { resource } = await ctx.params;
   if (!getResource(resource)) {
     return NextResponse.json({ error: "unknown resource" }, { status: 404 });
   }
+  const g = await apiGuard((u) => can(u, resource, "manage"));
+  if (g.fail) return g.fail;
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 

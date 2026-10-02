@@ -17,9 +17,11 @@ import {
 
 export interface AppSettings {
   consignmentTemplate: ConsignmentTemplate;
+  /** Till: sell items whose stock at the register's store is 0 or below (default yes — they're in hand) */
+  posAllowOutOfStock: boolean;
 }
 
-const DEFAULTS: AppSettings = { consignmentTemplate: DEFAULT_CONSIGNMENT_TEMPLATE };
+const DEFAULTS: AppSettings = { consignmentTemplate: DEFAULT_CONSIGNMENT_TEMPLATE, posAllowOutOfStock: true };
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const FILE = path.join(DATA_DIR, "settings.json");
@@ -34,6 +36,8 @@ function normalize(raw: Partial<AppSettings> | null | undefined): AppSettings {
     consignmentTemplate: isConsignmentTemplate(raw?.consignmentTemplate)
       ? raw.consignmentTemplate
       : DEFAULTS.consignmentTemplate,
+    posAllowOutOfStock:
+      typeof raw?.posAllowOutOfStock === "boolean" ? raw.posAllowOutOfStock : DEFAULTS.posAllowOutOfStock,
   };
 }
 

@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { logoutAction } from "@/lib/auth-actions";
 import { useDashboardView } from "@/components/dashboard-view-provider";
 import { LEGACY_VISIBLE_HREFS } from "@/lib/dashboard-view";
+import { useAccess } from "@/components/access-provider";
 import { cn } from "@/lib/utils";
 
 function isActive(pathname: string, href: string) {
@@ -29,15 +30,15 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const { view } = useDashboardView();
+  const access = useAccess();
 
-  // "Legacy" only hides links — every route stays reachable by URL.
-  const visibleNav =
-    view === "legacy"
-      ? NAV.map((cat) => ({
-          ...cat,
-          items: cat.items.filter((item) => LEGACY_VISIBLE_HREFS.has(item.href)),
-        })).filter((cat) => cat.items.length > 0)
-      : NAV;
+  // Pages the account can't open are left out; "Legacy" only hides links on top of that.
+  const visibleNav = NAV.map((cat) => ({
+    ...cat,
+    items: cat.items.filter(
+      (item) => access.canOpen(item.href) && (view !== "legacy" || LEGACY_VISIBLE_HREFS.has(item.href)),
+    ),
+  })).filter((cat) => cat.items.length > 0);
 
   return (
     <>

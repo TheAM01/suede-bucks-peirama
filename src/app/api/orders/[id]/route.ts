@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { apiGuard } from "@/lib/guard";
+import { canRead } from "@/config/permissions";
 import { readIntegrations } from "@/lib/integrations";
 import { readOrderDetail } from "@/lib/shopify-order-detail";
 import { getOrderOps } from "@/lib/order-ops";
@@ -16,8 +17,8 @@ export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const g = await apiGuard((u) => canRead(u, "orders"));
+  if (g.fail) return g.fail;
 
   const { id } = await ctx.params;
   if (!id) return NextResponse.json({ error: "missing order id" }, { status: 400 });

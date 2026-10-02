@@ -317,10 +317,18 @@ function TillWorkspace({
   const [paying, setPaying] = React.useState(false);
   const [done, setDone] = React.useState<{ orderId: string; name: string; total: number; change: number; method: string } | null>(null);
 
+  /** Settings → Till: may items at 0 stock (or more than is in stock) be sold? The server enforces it too. */
+  const [allowOutOfStock, setAllowOutOfStock] = React.useState(true);
+
   const loadCatalog = React.useCallback(async () => {
     setCatalogState({ loading: true, error: null });
-    const { data, error } = await api<{ items: CatalogItem[] }>(`/api/pos/catalog?registerId=${encodeURIComponent(register.id)}`);
-    if (data) setCatalog(data.items);
+    const { data, error } = await api<{ items: CatalogItem[]; allowOutOfStock: boolean }>(
+      `/api/pos/catalog?registerId=${encodeURIComponent(register.id)}`,
+    );
+    if (data) {
+      setCatalog(data.items);
+      setAllowOutOfStock(data.allowOutOfStock !== false);
+    }
     setCatalogState({ loading: false, error: data ? null : (error ?? "Couldn't load products.") });
   }, [register.id]);
 
@@ -333,6 +341,14 @@ function TillWorkspace({
   const totals = computeCart(cart, cartDiscount, exchange?.credit ?? 0);
 
   function addItem(item: CatalogItem) {
+    const inCart = cart.find((l) => l.variantId === item.variantId)?.quantity ?? 0;
+    if (!allowOutOfStock && item.available != null && inCart + 1 > item.available) {
+      toast.error(
+        item.available <= 0 ? "Out of stock" : `Only ${item.available} in stock`,
+        `${item.title} — selling out-of-stock items is turned off in Settings.`,
+      );
+      return;
+    }
     setCart((prev) => {
       const at = prev.findIndex((l) => l.variantId === item.variantId);
       if (at >= 0) return prev.map((l, i) => (i === at ? { ...l, quantity: l.quantity + 1 } : l));
@@ -402,10 +418,12 @@ function TillWorkspace({
             onReload={() => void loadCatalog()}
             onAdd={addItem}
             onNotFound={(code) => toast.error("Not found", `No product with barcode or SKU ${code}.`)}
+            allowOutOfStock={allowOutOfStock}
           />
           <CartPanel
             cart={cart}
             setCart={setCart}
+            allowOutOfStock={allowOutOfStock}
             totals={totals}
             cartDiscount={cartDiscount}
             setCartDiscount={setCartDiscount}
@@ -502,6 +520,7 @@ function ProductPicker({
   onReload,
   onAdd,
   onNotFound,
+  allowOutOfStock,
 }: {
   items: CatalogItem[];
   loading: boolean;
@@ -509,6 +528,7 @@ function ProductPicker({
   onReload: () => void;
   onAdd: (item: CatalogItem) => void;
   onNotFound: (code: string) => void;
+  allowOutOfStock: boolean;
 }) {
   const [query, setQuery] = React.useState("");
   const ref = React.useRef<HTMLInputElement>(null);
@@ -563,15 +583,19 @@ function ProductPicker({
           <p className="text-sm text-muted-foreground">{q ? "No products match." : "No products to sell."}</p>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-            {shown.map((i) => (
+            {shown.map((i) => {
+              const blocked = !allowOutOfStock && i.available != null && i.available <= 0;
+              return (
               <button
                 key={i.variantId}
                 type="button"
+                disabled={blocked}
+                title={blocked ? "Out of stock — selling out-of-stock items is turned off in Settings" : undefined}
                 onClick={() => {
                   onAdd(i);
                   ref.current?.focus();
                 }}
-                className="flex min-h-24 flex-col justify-between rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
+                className="flex min-h-24 flex-col justify-between rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-card"
               >
                 <span className="line-clamp-2 text-sm font-medium">{i.title}</span>
                 <span className="mt-2 flex items-end justify-between gap-2">
@@ -582,11 +606,12 @@ function ProductPicker({
                       i.available == null ? "text-muted-foreground" : i.available <= 0 ? "text-destructive" : "text-muted-foreground",
                     )}
                   >
-                    {i.available == null ? "—" : `${formatNumber(i.available)} here`}
+                    {i.available == null ? "—" : blocked ? "Out of stock" : `${formatNumber(i.available)} here`}
                   </span>
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
@@ -646,7 +671,9 @@ function CartPanel({
   onClearExchange,
   onPay,
   onClear,
+  allowOutOfStock,
 }: {
+  allowOutOfStock: boolean;
   cart: CartEntry[];
   setCart: React.Dispatch<React.SetStateAction<CartEntry[]>>;
   totals: ReturnType<typeof computeCart>;
@@ -723,7 +750,13 @@ function CartPanel({
                           <Minus />
                         </Button>
                         <span className="w-8 text-center text-sm tabular-nums">{l.quantity}</span>
-                        <Button variant="outline" size="icon-sm" onClick={() => setQty(l.variantId, l.quantity + 1)} aria-label="One more">
+                        <Button
+                          variant="outline"
+                          size="icon-sm"
+                          onClick={() => setQty(l.variantId, l.quantity + 1)}
+                          aria-label="One more"
+                          disabled={!allowOutOfStock && entry.available != null && l.quantity >= entry.available}
+                        >
                           <Plus />
                         </Button>
                       </div>

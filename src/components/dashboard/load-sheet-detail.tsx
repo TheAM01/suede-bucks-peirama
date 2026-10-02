@@ -23,6 +23,7 @@ import { ScanIntoSheetButton } from "./scanners";
 import { SheetPicker, openSheetsFor, type SheetChoice } from "./sheet-picker";
 import { useResource } from "@/lib/store";
 import { useToast } from "@/components/ui/toast";
+import { useAccess } from "@/components/access-provider";
 import { statusLabel } from "@/config/order-workflow";
 import { useStore } from "@/lib/store";
 import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
@@ -67,6 +68,8 @@ export function LoadSheetDetailView({
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const toast = useToast();
+  /** View-only Dispatch access sees the sheet and can print it, but can't change it. */
+  const manage = useAccess().can("dispatch", "manage");
   // Optimistic overlay on the server-rendered detail: a sheet patch and parcels
   // taken off, both tied to the detail they were made against — a fresh server
   // render (router.refresh) replaces them with the real thing.
@@ -132,7 +135,7 @@ export function LoadSheetDetailView({
     }
   }
 
-  const isDraft = sheet.status === "draft";
+  const isDraft = sheet.status === "draft" && manage;
   const outOfSync = parcels.filter((p) => p.syncIssue);
   const pickedParcels = parcels.filter((p) => picked.has(p.orderId));
 
@@ -202,19 +205,19 @@ export function LoadSheetDetailView({
           {isDraft ? (
             <ScanIntoSheetButton sheetId={id} reference={String(sheet.reference)} onDone={refreshAll} />
           ) : null}
-          {sheet.status === "draft" ? (
+          {manage && sheet.status === "draft" ? (
             <Button onClick={() => save({ status: "posted" }, "Posted — handed to courier")} disabled={busy}>
               <Send />
               Post — handed to courier
             </Button>
           ) : null}
-          {sheet.status !== "draft" && !reconciled ? (
+          {manage && sheet.status !== "draft" && !reconciled ? (
             <Button variant="outline" onClick={() => save({ reconciliation: "reconciled" }, "COD marked reconciled")} disabled={busy}>
               <Check />
               Mark COD reconciled
             </Button>
           ) : null}
-          {sheet.status === "posted" ? (
+          {manage && sheet.status === "posted" ? (
             <Button variant="outline" onClick={() => save({ status: "archived" }, "Archived")} disabled={busy}>
               <Archive />
               Archive

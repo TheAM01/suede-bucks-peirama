@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import QRCode from "qrcode";
-import { getCurrentUser } from "@/lib/auth";
+import { requireAccess } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { getOrderOps } from "@/lib/order-ops";
 import { readOrderBrief } from "@/lib/shopify-order-detail";
 import { formatCurrency } from "@/lib/utils";
@@ -39,7 +39,7 @@ export default async function LabelsPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  if (!(await getCurrentUser())) redirect("/login");
+  await requireAccess("/print/labels", (u) => can(u, "orders", "view"));
 
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { apiGuard } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { findByConsignment } from "@/lib/order-ops";
 import { runOrderAction } from "@/lib/order-workflow";
 import { MANUAL_COURIER, SCAN_ADVANCE, statusLabel, type OrderAction } from "@/config/order-workflow";
@@ -9,9 +10,11 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ consignmentId: string }> };
 
-async function resolve(ctx: Ctx) {
-  const user = await getCurrentUser();
-  if (!user) return { fail: NextResponse.json({ error: "unauthorized" }, { status: 401 }) };
+async function resolve(ctx: Ctx, write: boolean) {
+  // Looking a label up needs View on Orders or Dispatch; acting on it, Manage.
+  const level = write ? "manage" : "view";
+  const g = await apiGuard((u) => can(u, "orders", level) || can(u, "dispatch", level));
+  if (g.fail) return { fail: g.fail };
   const consignmentId = decodeURIComponent((await ctx.params).consignmentId).trim();
   const { doc, error } = await findByConsignment(consignmentId);
   if (error) return { fail: NextResponse.json({ error }, { status: 503 }) };
@@ -28,7 +31,7 @@ async function resolve(ctx: Ctx) {
 
 /** Look up the parcel behind a scanned label QR (the Dispatch page's load-sheet scanner). */
 export async function GET(_req: NextRequest, ctx: Ctx) {
-  const r = await resolve(ctx);
+  const r = await resolve(ctx, false);
   if ("fail" in r) return r.fail;
   const d = r.doc;
   return NextResponse.json({
@@ -58,7 +61,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
  * scanner asks, then resends with `target`.
  */
 export async function POST(req: NextRequest, ctx: Ctx) {
-  const r = await resolve(ctx);
+  const r = await resolve(ctx, true);
   if ("fail" in r) return r.fail;
   const body = (await req.json().catch(() => null)) as
     | { advance?: unknown; target?: unknown; location?: unknown }

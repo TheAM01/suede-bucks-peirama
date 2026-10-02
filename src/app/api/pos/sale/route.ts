@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { apiGuard } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { createSale } from "@/lib/pos";
 
 export const dynamic = "force-dynamic";
 
 /** Ring up a sale — see createSale() in src/lib/pos.ts. */
 export async function POST(req: NextRequest) {
-  if (!(await getCurrentUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const g = await apiGuard((u) => can(u, "till", "manage"));
+  if (g.fail) return g.fail;
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });
   const res = await createSale(body);

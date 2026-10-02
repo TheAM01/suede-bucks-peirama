@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { RESOURCE_KEYS, getResource } from "@/config/resources";
 import { ResourceView } from "@/components/dashboard/resource-view";
+import { requirePage } from "@/lib/guard";
 
 export function generateStaticParams() {
   return RESOURCE_KEYS.map((resource) => ({ resource }));
@@ -24,5 +25,6 @@ export default async function ResourcePage({
 }) {
   const { resource } = await params;
   if (!getResource(resource)) notFound();
+  await requirePage(`/dashboard/${resource}`);
   return <ResourceView resourceKey={resource} />;
 }

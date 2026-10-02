@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useStore } from "@/lib/store";
 import { useToast } from "@/components/ui/toast";
+import { useAccess } from "@/components/access-provider";
 import { ResourceView } from "./resource-view";
 import { OrderControlPanel } from "./order-control-panel";
 import { ScanDispatchButton } from "./scanners";
@@ -17,11 +18,12 @@ import { ScanDispatchButton } from "./scanners";
 export function OrdersView() {
   const store = useStore();
   const toast = useToast();
+  const access = useAccess();
 
   return (
     <ResourceView
       resourceKey="orders"
-      toolbar={<ScanDispatchButton />}
+      toolbar={access.can("orders", "manage") || access.can("dispatch", "manage") ? <ScanDispatchButton /> : undefined}
       selectionBar={(ctx) => (
         <OrderControlPanel
           ctx={ctx}

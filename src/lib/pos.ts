@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb, isDbConfigured } from "./db";
 import { APP_OWNED_COLLECTIONS, DB_UNAVAILABLE } from "./app-data";
 import { shopifyQuery, toGid, fromGid, type ShopifyResult } from "./shopify-client";
+import { readAppSettings } from "./app-settings";
 import {
   POS_ATTR,
   POS_TAG,
@@ -220,9 +221,26 @@ export async function createSale(
   const raw = Array.isArray(input.lines) ? (input.lines as Record<string, unknown>[]) : [];
   if (raw.length === 0) return { error: "The cart is empty." };
   const ids = raw.map((l) => str(l.variantId)).filter(Boolean);
-  const priced = await shopifyQuery<{ nodes: ({ id: string; price: string; title: string; sku: string | null; product: { title: string } } | null)[] }>(
-    `query($ids: [ID!]!) { nodes(ids: $ids) { ... on ProductVariant { id price title sku product { title } } } }`,
-    { ids: ids.map((id) => toGid("ProductVariant", id)) },
+  const { posAllowOutOfStock } = await readAppSettings();
+  const priced = await shopifyQuery<{
+    nodes: ({
+      id: string;
+      price: string;
+      title: string;
+      sku: string | null;
+      product: { title: string };
+      inventoryItem: { tracked: boolean; inventoryLevel: { quantities: { quantity: number }[] } | null } | null;
+    } | null)[];
+  }>(
+    `query($ids: [ID!]!, $loc: ID!) {
+      nodes(ids: $ids) {
+        ... on ProductVariant {
+          id price title sku product { title }
+          inventoryItem { tracked inventoryLevel(locationId: $loc) { quantities(names: ["available"]) { quantity } } }
+        }
+      }
+    }`,
+    { ids: ids.map((id) => toGid("ProductVariant", id)), loc: toGid("Location", register.locationId) },
   );
   if (!priced.ok) return { error: priced.error };
   const byId = new Map(priced.data.nodes.filter(Boolean).map((v) => [fromGid(v!.id), v!]));
@@ -232,6 +250,18 @@ export async function createSale(
     if (!v) return { error: "An item in the cart no longer exists in Shopify — remove it and scan it again." };
     const quantity = Math.floor(num(l.quantity));
     if (quantity < 1) return { error: "Quantities must be at least 1." };
+    // Settings → Till: when out-of-stock sales are off, the live count at this store is the limit.
+    if (!posAllowOutOfStock && v.inventoryItem?.tracked !== false) {
+      const available = v.inventoryItem?.inventoryLevel?.quantities[0]?.quantity ?? 0;
+      if (quantity > available) {
+        const name = v.title === "Default Title" ? v.product.title : `${v.product.title} — ${v.title}`;
+        return {
+          error: available > 0
+            ? `Only ${available} of ${name} in stock at ${register.location} — selling out-of-stock items is turned off in Settings.`
+            : `${name} is out of stock at ${register.location} — selling out-of-stock items is turned off in Settings.`,
+        };
+      }
+    }
     lines.push({
       variantId: str(l.variantId),
       title: v.title === "Default Title" ? v.product.title : `${v.product.title} — ${v.title}`,
@@ -340,8 +370,13 @@ export async function createSale(
     }`,
     {
       order,
-      // The item is physically in hand, so sell it even if Shopify's count says 0.
-      options: { inventoryBehaviour: "DECREMENT_IGNORING_POLICY", sendReceipt: false, sendFulfillmentReceipt: false },
+      // When out-of-stock sales are allowed the item is in hand, so sell it even if
+      // Shopify's count says 0; otherwise let Shopify enforce the product's policy too.
+      options: {
+        inventoryBehaviour: posAllowOutOfStock ? "DECREMENT_IGNORING_POLICY" : "DECREMENT_OBEYING_POLICY",
+        sendReceipt: false,
+        sendFulfillmentReceipt: false,
+      },
     },
   );
   if (!res.ok) return { error: res.error };

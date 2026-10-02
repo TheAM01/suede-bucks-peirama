@@ -18,6 +18,10 @@ export type SessionPayload = {
   r: string;
   /** issued-at (ms) */
   iat: number;
+  /** database user id — absent for the Owner (the environment account) */
+  uid?: string;
+  /** the user's sessionVersion when signed in; a mismatch means the session was revoked */
+  v?: number;
 };
 
 const encoder = new TextEncoder();

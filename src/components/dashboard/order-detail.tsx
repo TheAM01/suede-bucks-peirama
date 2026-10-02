@@ -26,6 +26,7 @@ import { ORDER_STATUS_OPTIONS, canRun, statusLabel } from "@/config/order-workfl
 import { OrderEditDrawer } from "./order-control-panel";
 import { useToast } from "@/components/ui/toast";
 import { POS_ATTR } from "@/config/pos";
+import { useAccess } from "@/components/access-provider";
 import type {
   OrderDetail,
   TimelineEntry,
@@ -216,6 +217,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   const [error, setError] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState(false);
   const toast = useToast();
+  const access = useAccess();
 
   // No state is touched before the first await, so mounting this doesn't
   // cascade a render. `isStale` drops a response whose request has been
@@ -299,7 +301,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   }
 
   const stage = ops?.opsStatus ?? "active";
-  const canEdit = canRun("modify", stage);
+  const canEdit = canRun("modify", stage) && access.can("orders", "manage");
   const pay = PAYMENT_BADGE[order.payment] ?? { label: order.payment, variant: "outline" as const };
   const ful =
     FULFILLMENT_BADGE[order.fulfillment] ?? { label: order.fulfillment, variant: "outline" as const };
@@ -337,7 +339,13 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
           <Button
             onClick={() => setEditing(true)}
             disabled={!canEdit}
-            title={canEdit ? undefined : "Canceled orders can't be edited"}
+            title={
+              canEdit
+                ? undefined
+                : access.can("orders", "manage")
+                  ? "Canceled orders can't be edited"
+                  : "You have view-only access to Orders"
+            }
           >
             <Pencil />
             Edit details

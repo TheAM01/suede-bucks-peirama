@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OrderDetailView } from "@/components/dashboard/order-detail";
+import { requirePage } from "@/lib/guard";
 
 export async function generateMetadata({
   params,
@@ -16,5 +17,6 @@ export default async function OrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  await requirePage("/dashboard/orders");
   return <OrderDetailView orderId={id} />;
 }

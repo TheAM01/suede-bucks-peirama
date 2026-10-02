@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "./auth";
+import { actionGuard } from "./guard";
+import { can } from "@/config/permissions";
 import { shopifyQuery } from "./shopify-client";
 import {
   checkShopify,
@@ -27,8 +28,8 @@ export async function connectShopifyAction(
   _prev: IntegrationActionState,
   formData: FormData,
 ): Promise<IntegrationActionState> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, message: "Not signed in." };
+  const g = await actionGuard((u) => can(u, "integrations", "manage"));
+  if (g.error) return { ok: false, message: g.error };
 
   const storeDomain = String(formData.get("storeDomain") ?? "")
     .trim()
@@ -95,8 +96,8 @@ export async function connectShopifyAction(
 
 /** Re-run the connection test against the stored credentials. */
 export async function testShopifyAction(): Promise<IntegrationActionState> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, message: "Not signed in." };
+  const g = await actionGuard((u) => can(u, "integrations", "manage"));
+  if (g.error) return { ok: false, message: g.error };
 
   const config = await readIntegrations();
   if (!config.shopify) return { ok: false, message: "Nothing configured yet." };
@@ -118,8 +119,8 @@ export async function testShopifyAction(): Promise<IntegrationActionState> {
 
 /** Remove the stored Shopify connection. */
 export async function disconnectShopifyAction(): Promise<IntegrationActionState> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, message: "Not signed in." };
+  const g = await actionGuard((u) => can(u, "integrations", "manage"));
+  if (g.error) return { ok: false, message: g.error };
 
   const config = await readIntegrations();
   config.shopify = null;
@@ -139,8 +140,8 @@ const ORDERS_CREATE_WEBHOOK_PATH = "/api/webhooks/orders-create";
 export async function registerOrderWebhookAction(
   baseUrl: string,
 ): Promise<IntegrationActionState> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, message: "Not signed in." };
+  const g = await actionGuard((u) => can(u, "integrations", "manage"));
+  if (g.error) return { ok: false, message: g.error };
 
   let origin: string;
   try {

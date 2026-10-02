@@ -30,6 +30,7 @@ import {
 } from "@/config/inventory-docs";
 import { useResource, useStore } from "@/lib/store";
 import { useToast } from "@/components/ui/toast";
+import { useAccess } from "@/components/access-provider";
 import { formatCurrency, formatDate, formatDateTime, formatNumber, cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -123,6 +124,7 @@ export function InventoryDocDetail({
 }) {
   const store = useStore();
   const toast = useToast();
+  const access = useAccess();
   const [doc, setDoc] = React.useState<Row | null>(initial);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
@@ -157,8 +159,10 @@ export function InventoryDocDetail({
   const status = String(doc.status);
   const badge = docStatus(kind, status);
   const lines = (doc.lines as DocLine[]) ?? [];
-  const isDraft = status === "draft";
-  const can = (a: DocAction) => canRunDoc(kind, a, status);
+  // View-only access shows the document as it is — no editing, no stage buttons.
+  const manage = access.can(kind, "manage");
+  const isDraft = status === "draft" && manage;
+  const can = (a: DocAction) => manage && canRunDoc(kind, a, status);
   const history = (Array.isArray(doc.history) ? doc.history : []) as { at: string; action: string; note?: string }[];
 
   async function act(action: DocAction, payload: Record<string, unknown> = {}): Promise<boolean> {

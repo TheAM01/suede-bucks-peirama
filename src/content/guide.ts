@@ -974,7 +974,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         "Returned items go straight back into this store's stock.",
       ] },
       { t: "callout", tone: "warning", title: "Exchange credit isn't paid out", text: "If the replacement items cost less than the credit, the difference isn't refunded — the till warns you. Do a normal refund for the difference instead." },
-      { t: "callout", tone: "info", title: "Prices come from Shopify", text: "The till always charges Shopify's current price; only quantities and the discounts you enter come from the till. Selling an item whose stock shows 0 is allowed (you have it in hand) and the till just warns you." },
+      { t: "callout", tone: "info", title: "Prices come from Shopify", text: "The till always charges Shopify's current price; only quantities and the discounts you enter come from the till. Whether an item whose stock shows 0 can be sold is a setting: **Settings → Till → Sell items that are out of stock**. On (the default), the till just warns you; off, out-of-stock items are greyed out and you can't add more than the store has." },
+      { t: "callout", tone: "info", title: "Who can use the till", text: "Selling and returns need **Manage** access to the Till (set on the Users page), plus a POS Staff PIN for the person at the counter. The dashboard login says who may open the till; the PIN says who's serving." },
     ],
     technical: [
       { t: "p", text: "`/dashboard/pos/till` renders `PosTill` (`src/components/dashboard/pos-till.tsx`). The register id is kept per device in `localStorage` (`suedebucks:pos-register`); the cashier's PIN only lives in memory and is re-verified on every sale and return. Money is computed by `computeCart()` (`src/config/pos.ts`), shared by the till and the server so both agree to the cent." },
@@ -1070,7 +1071,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
       {
         t: "dl",
         items: [
-          { term: "Account", def: "The admin account signed in right now." },
+          { term: "Account", def: "The account signed in right now (change your password from **Account & password** in the top-right menu)." },
+          { term: "Till", def: "**Sell items that are out of stock** — on (the default), the till sells an item even when its store shows 0, because it's in your hand and the count may be behind; stock can go negative. Off, the till won't sell more than the store has: out-of-stock items are greyed out and + stops at the stock level. Applies to every register." },
           { term: "Currency", def: "Which currency symbol and format amounts are shown in. It only changes how figures look — it doesn't convert them — so pick your store's own currency (e.g. PKR). Remembered in this browser." },
           { term: "Consignment IDs", def: "The format of the consignment ID generated when an order is assigned a consignment. Pick one from the **Schema** list — the example underneath shows what an ID will look like — and press **Save schema**. The default is `FKHIT<order-city>V<courier-name>A<ms-since-epoch>`, e.g. FKHITKARACHIVINSTAA1790000000000. It applies to the whole store from the next assignment on; IDs already assigned don't change." },
           { term: "Dashboard view", def: "**New** shows every page in the sidebar. **Legacy** shows a shorter list: Dashboard, Analytics, Customers, Products, Inventory, Stock Adjustments, Orders, Draft Orders, Returns, Dispatch, Return Load Sheets, Leads, Settings, Integrations, and Guide. Remembered in this browser." },
@@ -1079,13 +1081,54 @@ export const GUIDE_SECTIONS: GuideSection[] = [
       },
       { t: "callout", tone: "warning", title: "Store details and notifications aren't saved yet", text: "The **Store details** fields (name, email, phone, timezone, address) and the **Notifications** switches are placeholders — Save changes doesn't store them, and no notification emails are sent. Your store's real details live in Shopify admin." },
       { t: "callout", tone: "info", title: "Legacy hides pages, it doesn't lock them", text: "Legacy only tidies the sidebar. A hidden page still opens from its address or a bookmark." },
-      { t: "callout", tone: "warning", title: "One login runs this dashboard", text: "There is a single administrator account. Anyone with it can see and change everything, so keep it private and log out on shared computers (account menu, top right). A login lasts seven days." },
+      { t: "callout", tone: "info", title: "Who can change settings", text: "Settings need **Manage** access to change (set on the Users page). With **View** access the page shows, but its controls are locked. The **Owner** account can always change everything." },
     ],
     technical: [
-      { t: "p", text: "`SettingsView` (`src/components/dashboard/settings-view.tsx`). The **consignment ID schema** is the one server-side setting: `readAppSettings()` / `writeAppSettings()` in `src/lib/app-settings.ts` (MongoDB `app_settings`, `_id: \"config\"`, else `.data/settings.json`), saved by `saveConsignmentTemplateAction()` (`src/lib/settings-actions.ts`), which only accepts a member of `CONSIGNMENT_TEMPLATES`. An unknown stored value reads back as the default. Tokens (`<order-city>`, `<courier-name>`, `<order-number>`, `<ms-since-epoch>`) are filled by `renderConsignmentId()`, with values reduced to `[A-Z0-9]`. Two more settings persist client-side in `localStorage`: currency (`src/lib/currency.ts`, key `suedebucks:currency`, format-only via `formatCurrency`) and dashboard view (`src/lib/dashboard-view.ts`, key `suedebucks:dashboard-view`). Store details and notification toggles are uncontrolled or local state with no backend." },
+      { t: "p", text: "`SettingsView` (`src/components/dashboard/settings-view.tsx`). The **consignment ID schema** is a server-side setting: `readAppSettings()` / `writeAppSettings()` in `src/lib/app-settings.ts` (MongoDB `app_settings`, `_id: \"config\"`, else `.data/settings.json`), saved by `saveConsignmentTemplateAction()` (`src/lib/settings-actions.ts`), which only accepts a member of `CONSIGNMENT_TEMPLATES`. An unknown stored value reads back as the default. Tokens (`<order-city>`, `<courier-name>`, `<order-number>`, `<ms-since-epoch>`) are filled by `renderConsignmentId()`, with values reduced to `[A-Z0-9]`. Two more settings persist client-side in `localStorage`: currency (`src/lib/currency.ts`, key `suedebucks:currency`, format-only via `formatCurrency`) and dashboard view (`src/lib/dashboard-view.ts`, key `suedebucks:dashboard-view`). Store details and notification toggles are uncontrolled or local state with no backend." },
       { t: "ul", items: [
         "In `legacy` mode the sidebar filters each nav category to `LEGACY_VISIBLE_HREFS` and drops empty categories (Point of Sale disappears). Routes, APIs, and guide slugs are untouched.",
-        "Auth: `ADMIN_USERNAME` / `ADMIN_PASSWORD` env vars, `sb_session` HMAC cookie (7 days, `SESSION_SECRET`), `src/proxy.ts` guarding `/dashboard/*`, `/print/*`, `/scan/*`. Logout (`logoutAction`) deletes the cookie. There is no refresh — an expired session just means signing in again.",
+        "`posAllowOutOfStock` (default `true`) is the second server-side setting, saved by `savePosOutOfStockAction()`. `createSale()` (`src/lib/pos.ts`) enforces it: when off it reads each line's live `inventoryLevel(locationId).available` at the register's store and refuses any quantity above it, and `orderCreate` uses `DECREMENT_OBEYING_POLICY` instead of `DECREMENT_IGNORING_POLICY`. `GET /api/pos/catalog` returns `allowOutOfStock` so the till can grey out tiles and cap quantities.",
+        "Both settings actions need Manage on Settings (`actionGuard`); the card controls are disabled without it. Auth and permissions are described under **Users**.",
+      ] },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "users",
+    title: "Users & permissions",
+    category: "System",
+    everyday: [
+      { t: "p", text: "**Users** is where you give other people their own login, and decide which pages each one can see and use. The account set up on the server — the **Owner** — can always do everything and can't be locked out." },
+      {
+        t: "dl",
+        items: [
+          { term: "None", def: "The page is hidden from their sidebar and they can't open it." },
+          { term: "View", def: "They can see the page, but can't create, edit, delete, or act on anything there." },
+          { term: "Manage", def: "Full use of the page." },
+        ],
+      },
+      { t: "ol", items: [
+        "Open System then Users and press **New user**.",
+        "Enter their name, a username, and a **temporary password** (at least 8 characters). Tell them the password in person or privately.",
+        "Set each page to None, View, or Manage — or start from **No access**, **View all**, or **Manage all** and adjust.",
+        "Press **Create user**. When they first sign in they must choose their own password before anything else opens.",
+      ] },
+      { t: "h", text: "Changing or removing someone" },
+      { t: "p", text: "Click a user to change their access, set a new temporary password (if they forgot theirs), or tick **Disable this account**. Any of these signs them out everywhere straight away. **Delete** removes the login for good; disabling is better if they might come back." },
+      { t: "callout", tone: "info", title: "Letting someone else manage users", text: "Give a person **Manage** on Users and they can add and edit accounts too — but only up to their own access on each page, and they can't edit anyone who has more access than they do, or the Owner." },
+      { t: "callout", tone: "info", title: "Some pages share data", text: "A few pages need to read other pages' data to work — for example Purchase Orders lists suppliers and stock. Having View on such a page lets it show that data; it never lets someone change the other page." },
+      { t: "callout", tone: "warning", title: "Logins aren't till PINs", text: "A dashboard login decides who may open pages (including the Till). The person serving at the till still signs in there with their **POS Staff** PIN." },
+    ],
+    technical: [
+      { t: "p", text: "Permissions are per page (`src/config/permissions.ts`): `AREAS` is every `NAV` item except the always-open home, guide, and account pages, keyed by `areaKeyOf(href)` (`/dashboard/pos/till` → `till`). A user holds a `Permissions` map of `none` / `view` / `manage`; `can(access, area, level)`, and `canRead(access, resource)` which also allows reading a resource listed in `READS_ALSO` for a page they can view." },
+      { t: "ul", items: [
+        "**Accounts** (`src/lib/users.ts`, MongoDB `app_users`, unique `username`): scrypt hashes with a per-user salt, `status`, `mustChangePassword`, and `sessionVersion`. The **Owner** is the `ADMIN_USERNAME` / `ADMIN_PASSWORD` env account: no DB row, every permission.",
+        "**Sessions**: the signed `sb_session` cookie carries `uid` and `v` (sessionVersion) for users. `getCurrentUser()` (React `cache`d per request) re-reads the account on every request, so permission changes apply immediately. Disabling, a new temporary password, or new permissions bump `sessionVersion`, which ends existing sessions. A revoked cookie is cleared via `/api/auth/signout?reason=revoked` (pages can't delete cookies while rendering).",
+        "**Enforcement** (`src/lib/guard.ts`): every dashboard page calls `requirePage(path, level)` (layouts don't re-run on client navigation, so the layout can't gate pages); print and scan pages use `requireAccess`; route handlers use `apiGuard`; server actions use `actionGuard`. `/api/resources` GET needs `canRead`, and returns `readOnly: true` without Manage, so `ResourceView` hides write controls. Writes need Manage. Order actions also accept Manage on Dispatch (sheet actions) or Shipments (delivered / returned / fulfilled), and `/api/pos/*` needs Manage on the Till.",
+        "**Escalation guard**: someone with Manage on Users can only grant up to their own level per page (`withinActor()`), can't edit or delete an account that exceeds them, and can't disable or delete themselves. The client mirrors this (disabled options), but the server decides.",
+        "**Client**: `AccessProvider` / `useAccess()` (`src/components/access-provider.tsx`, fed by `DashboardShell`) filters the sidebar and the account menu and hides actions on detail pages. This is cosmetic only — the server checks again.",
+        "`/dashboard/account` (`changePasswordAction`) lets users change their own password (re-issuing their session). It's the only page reachable while `mustChangePassword` is set. Login is still `loginAction`: the Owner first, then `authenticateUser()`.",
       ] },
     ],
   },

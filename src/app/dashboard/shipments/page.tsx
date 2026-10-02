@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requirePage } from "@/lib/guard";
 import { ShipmentsView } from "@/components/dashboard/shipments-view";
 
 export const metadata: Metadata = { title: "Shipments" };
 
 export default async function Page() {
-  if (!(await getCurrentUser())) redirect("/login");
+  await requirePage("/dashboard/shipments");
   return <ShipmentsView />;
 }

@@ -324,6 +324,13 @@ export const NAV: NavCategory[] = [
         guide: "settings",
       },
       {
+        title: "Users",
+        href: "/dashboard/users",
+        icon: UsersRound,
+        subtitle: "Who can sign in, and what each person can see and do",
+        guide: "users",
+      },
+      {
         title: "Integrations",
         href: "/dashboard/integrations",
         icon: Plug,

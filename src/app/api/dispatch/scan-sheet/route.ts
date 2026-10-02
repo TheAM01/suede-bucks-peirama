@@ -1,13 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { apiGuard } from "@/lib/guard";
+import { can } from "@/config/permissions";
 import { createScannedLoadSheet } from "@/lib/load-sheet-scan";
 
 export const dynamic = "force-dynamic";
 
 /** Create a posted load sheet from scanned consignment QR codes (`{ courier, location, consignmentIds }`). */
 export async function POST(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const g = await apiGuard((u) => can(u, "dispatch", "manage"));
+  if (g.fail) return g.fail;
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });

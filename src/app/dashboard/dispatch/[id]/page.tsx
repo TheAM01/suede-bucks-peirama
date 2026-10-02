@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requirePage } from "@/lib/guard";
 import { getLoadSheetDetail } from "@/lib/load-sheet-detail";
 import { LoadSheetDetailView } from "@/components/dashboard/load-sheet-detail";
 
@@ -12,7 +11,7 @@ export default async function LoadSheetPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  if (!(await getCurrentUser())) redirect("/login");
+  await requirePage("/dashboard/dispatch");
   const { id } = await params;
   const { detail, error } = await getLoadSheetDetail(id);
   return <LoadSheetDetailView id={id} detail={detail ?? null} error={error ?? null} />;
