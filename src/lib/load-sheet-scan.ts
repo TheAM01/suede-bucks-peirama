@@ -2,7 +2,7 @@ import "server-only";
 import type { Row } from "@/config/resource-types";
 import { findByConsignment, type OrderOpsDoc } from "./order-ops";
 import { runOrderAction } from "./order-workflow";
-import { postLoadSheet, resolveLoadSheet } from "./dispatch";
+import { getLoadSheet, postLoadSheet, resolveLoadSheet } from "./dispatch";
 
 /**
  * Build a posted dispatch load sheet from scanned label QR codes: each code is
@@ -10,7 +10,9 @@ import { postLoadSheet, resolveLoadSheet } from "./dispatch";
  * must be In Pickup & Packing (it's dispatched onto the sheet) or already
  * Dispatched but on no sheet yet (it's just added). Totals and COD come from
  * each order's Create Package snapshot as parcels are attached, never from
- * the client. The sheet is posted at the end — that's the courier handover.
+ * the client. The parcels go on a new sheet or an open one the user picked
+ * (`target`), which is posted at the end unless `post: false` — posting is
+ * the courier handover.
  * Lives apart from dispatch.ts so that module stays free of order-workflow
  * imports (order-workflow itself uses dispatch.ts).
  */
@@ -18,6 +20,10 @@ export async function createScannedLoadSheet(input: {
   courier?: unknown;
   location?: unknown;
   consignmentIds?: unknown;
+  /** "new" (default) or an open sheet's id to add the parcels to */
+  target?: unknown;
+  /** post the sheet once loaded (default true — the rider is leaving) */
+  post?: unknown;
 }): Promise<{ row?: Row; error?: string; dispatchErrors?: string[] }> {
   const courier = String(input.courier ?? "").trim();
   const location = String(input.location ?? "").trim();
@@ -50,7 +56,7 @@ export async function createScannedLoadSheet(input: {
     parcels.push(doc);
   }
 
-  const resolved = await resolveLoadSheet(courier, "new", location);
+  const resolved = await resolveLoadSheet(courier, String(input.target ?? "") || "new", location);
   if (!resolved.sheet) return { error: resolved.error };
   const sheetId = resolved.sheet.id;
 
@@ -61,6 +67,11 @@ export async function createScannedLoadSheet(input: {
     if (res.error) dispatchErrors.push(`${p.number || p.consignmentId}: ${res.error}`);
   }
 
+  if (input.post === false) {
+    const sheet = await getLoadSheet("dispatch", sheetId);
+    if (!sheet.row) return { error: sheet.error };
+    return { row: sheet.row, dispatchErrors };
+  }
   const posted = await postLoadSheet(sheetId);
   if (!posted.row) return { error: posted.error };
   return { row: posted.row, dispatchErrors };

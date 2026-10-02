@@ -16,6 +16,12 @@ import {
   Truck,
 } from "@/components/icons";
 import type { LoadSheetDetail } from "@/lib/load-sheet-detail";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog } from "@/components/ui/dialog";
+import { postOrderAction } from "./order-control-panel";
+import { ScanIntoSheetButton } from "./scanners";
+import { SheetPicker, openSheetsFor, type SheetChoice } from "./sheet-picker";
+import { useResource } from "@/lib/store";
 import { statusLabel } from "@/config/order-workflow";
 import { useStore } from "@/lib/store";
 import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
@@ -59,6 +65,11 @@ export function LoadSheetDetailView({
   const store = useStore();
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [picked, setPicked] = React.useState<Set<string>>(new Set());
+  const [moving, setMoving] = React.useState(false);
+  const [removing, setRemoving] = React.useState(false);
+  const [moveTo, setMoveTo] = React.useState<SheetChoice | null>(null);
+  const { rows: allSheets } = useResource("dispatch");
 
   const back = (
     <Button variant="ghost" size="sm" asChild>
@@ -99,6 +110,34 @@ export function LoadSheetDetailView({
     else router.refresh();
   }
 
+  const isDraft = sheet.status === "draft";
+  const outOfSync = parcels.filter((p) => p.syncIssue);
+  const pickedParcels = parcels.filter((p) => picked.has(p.orderId));
+
+  function refreshAll() {
+    store.refresh("dispatch");
+    store.refresh("orders");
+    store.refresh("shipments");
+    router.refresh();
+  }
+
+  /** Remove / move the ticked parcels, one order at a time (a "new" sheet is opened once, then reused). */
+  async function runOnPicked(action: "remove_from_sheet" | "move_to_sheet", choice?: SheetChoice) {
+    setBusy(true);
+    setActionError(null);
+    const errors: string[] = [];
+    let target = choice?.target;
+    for (const p of pickedParcels) {
+      const res = await postOrderAction(p.orderId, action, target ? { target, location: choice?.location } : {});
+      if (res.error) errors.push(`${p.number || p.consignmentId}: ${res.error}`);
+      else if (target === "new" && res.loadSheetId) target = res.loadSheetId;
+    }
+    setBusy(false);
+    setPicked(new Set());
+    if (errors.length) setActionError(errors.join(" · "));
+    refreshAll();
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -121,6 +160,9 @@ export function LoadSheetDetailView({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isDraft ? (
+            <ScanIntoSheetButton sheetId={id} reference={String(sheet.reference)} onDone={refreshAll} />
+          ) : null}
           {sheet.status === "draft" ? (
             <Button onClick={() => save({ status: "posted" })} disabled={busy}>
               <Send />
@@ -161,6 +203,17 @@ export function LoadSheetDetailView({
         </div>
       ) : null}
 
+      {outOfSync.length ? (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm">
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <span>
+            {outOfSync.length} {outOfSync.length === 1 ? "parcel doesn't" : "parcels don't"} match this sheet — see
+            the <span className="font-medium">Out of sync</span> badges below.
+            {isDraft ? " Tick them and remove them, or move them to the right sheet." : ""}
+          </span>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Parcels" value={formatNumber(parcels.length)} icon={Truck} tone="primary" />
         <StatCard label="COD to collect" value={formatCurrency(Number(sheet.codAmount ?? 0))} icon={Wallet} tone="warning" />
@@ -174,8 +227,20 @@ export function LoadSheetDetailView({
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <CardTitle>Parcels on this sheet</CardTitle>
+          {isDraft && picked.size > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">{picked.size} selected</span>
+              <Button variant="outline" size="sm" onClick={() => setMoving(true)} disabled={busy}>
+                <Truck />
+                Move to another sheet
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => setRemoving(true)} disabled={busy}>
+                Remove from sheet
+              </Button>
+            </div>
+          ) : null}
         </CardHeader>
         {parcels.length === 0 ? (
           <CardContent>
@@ -188,6 +253,19 @@ export function LoadSheetDetailView({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                {isDraft ? (
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      aria-label="Select all parcels"
+                      checked={parcels.length > 0 && picked.size === parcels.length}
+                      onChange={() =>
+                        setPicked(picked.size === parcels.length ? new Set() : new Set(parcels.map((p) => p.orderId)))
+                      }
+                    />
+                  </TableHead>
+                ) : null}
                 <TableHead className="w-10">#</TableHead>
                 <TableHead>Order</TableHead>
                 <TableHead>Consignment</TableHead>
@@ -206,6 +284,24 @@ export function LoadSheetDetailView({
                   className="cursor-pointer"
                   onClick={() => router.push(`/dashboard/orders/${p.orderId}`)}
                 >
+                  {isDraft ? (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary"
+                        aria-label={`Select ${p.number}`}
+                        checked={picked.has(p.orderId)}
+                        onChange={() =>
+                          setPicked((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(p.orderId)) next.delete(p.orderId);
+                            else next.add(p.orderId);
+                            return next;
+                          })
+                        }
+                      />
+                    </TableCell>
+                  ) : null}
                   <TableCell className="tabular-nums text-muted-foreground/60">{i + 1}</TableCell>
                   <TableCell className="font-medium">{p.number || p.orderId}</TableCell>
                   <TableCell className="font-mono text-[13px]">{p.consignmentId || "—"}</TableCell>
@@ -213,7 +309,15 @@ export function LoadSheetDetailView({
                   <TableCell className="text-muted-foreground">{p.city || "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{p.phone || "—"}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{statusLabel(p.opsStatus)}</Badge>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline">{statusLabel(p.opsStatus)}</Badge>
+                      {p.syncIssue ? (
+                        <Badge variant="destructive" title={p.syncIssue}>
+                          Out of sync
+                        </Badge>
+                      ) : null}
+                    </span>
+                    {p.syncIssue ? <p className="mt-1 text-xs text-destructive">{p.syncIssue}</p> : null}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {p.codAmount ? formatCurrency(p.codAmount) : "Paid"}
@@ -225,6 +329,52 @@ export function LoadSheetDetailView({
           </Table>
         )}
       </Card>
+
+      {moving ? (
+        <Dialog
+          open
+          onClose={() => setMoving(false)}
+          title={`Move ${picked.size} ${picked.size === 1 ? "parcel" : "parcels"}`}
+          description={`To another open ${String(sheet.courier)} sheet, or a new one.`}
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setMoving(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!moveTo || busy}
+                onClick={() => {
+                  setMoving(false);
+                  void runOnPicked("move_to_sheet", moveTo!);
+                }}
+              >
+                Move
+              </Button>
+            </>
+          }
+        >
+          <SheetPicker
+            name="move-to-sheet"
+            courier={String(sheet.courier)}
+            sheets={openSheetsFor(allSheets, String(sheet.courier))}
+            exclude={id}
+            value={moveTo}
+            onChange={setMoveTo}
+          />
+        </Dialog>
+      ) : null}
+
+      <ConfirmDialog
+        open={removing}
+        onCancel={() => setRemoving(false)}
+        onConfirm={() => {
+          setRemoving(false);
+          void runOnPicked("remove_from_sheet");
+        }}
+        title={`Remove ${picked.size} ${picked.size === 1 ? "parcel" : "parcels"} from ${String(sheet.reference)}?`}
+        description="They go back to In Pickup & Packing (not dispatched), and come off this sheet's totals."
+        confirmLabel="Remove"
+      />
 
       {sheet.notes ? (
         <Card>

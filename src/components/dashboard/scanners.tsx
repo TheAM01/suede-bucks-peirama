@@ -4,13 +4,14 @@ import * as React from "react";
 import { QrCode, Check, AlertCircle, Trash2, Loader2 } from "@/components/icons";
 import { COURIER_OPTIONS, LOCATION_OPTIONS } from "@/config/resources";
 import { consignmentFromScan, normalizeCourier, statusLabel } from "@/config/order-workflow";
-import { useStore } from "@/lib/store";
+import { useResource, useStore } from "@/lib/store";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Dialog } from "@/components/ui/dialog";
+import { SheetPicker, openSheetsFor, type OpenSheet, type SheetChoice } from "./sheet-picker";
 
 /**
  * Scanner input. USB/Bluetooth barcode scanners act as a keyboard — they type
@@ -60,41 +61,116 @@ interface DispatchLine {
   text: string;
 }
 
-/** Orders page: scan printed labels to dispatch their orders one by one. */
+/** What the consignment endpoint answers when a scanned parcel needs its load sheet chosen. */
+interface NeedsSheet {
+  code: string;
+  number: string;
+  courier: string;
+  sheets: OpenSheet[];
+}
+
+export interface ScanReply {
+  error?: string;
+  number?: string;
+  courier?: string;
+  needsSheet?: boolean;
+  sheets?: OpenSheet[];
+  loadSheet?: string;
+  loadSheetId?: string;
+  status?: string;
+  from?: string;
+  orderId?: string;
+}
+
+/** POST a scanned consignment to the consignment endpoint. Never throws. */
+export async function postScan(
+  code: string,
+  body: Record<string, unknown> = {},
+): Promise<{ ok: boolean; status: number; reply: ScanReply }> {
+  try {
+    const res = await fetch(`/api/consignments/${encodeURIComponent(code)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { ok: res.ok, status: res.status, reply: (await res.json().catch(() => ({}))) as ScanReply };
+  } catch {
+    return { ok: false, status: 0, reply: { error: "Couldn't reach the server." } };
+  }
+}
+
+function ScanLog({ lines }: { lines: DispatchLine[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {lines.map((l, i) => (
+        <li
+          key={`${l.code}-${i}`}
+          className={cn("flex items-start gap-2 text-sm", l.ok ? "text-success" : "text-destructive")}
+        >
+          {l.ok ? <Check className="mt-0.5 size-4 shrink-0" /> : <AlertCircle className="mt-0.5 size-4 shrink-0" />}
+          <span>
+            <span className="font-mono">{l.code}</span> — {l.text}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Orders page: scan printed labels to dispatch their orders one by one. Every
+ * scan asks which of that courier's open sheets the parcel goes on (or a new
+ * one) — the sheet last used for that courier is highlighted, so Enter
+ * confirms it.
+ */
 export function ScanDispatchButton() {
   const store = useStore();
   const [open, setOpen] = React.useState(false);
   const [lines, setLines] = React.useState<DispatchLine[]>([]);
   const [busy, setBusy] = React.useState(false);
+  const [pending, setPending] = React.useState<NeedsSheet | null>(null);
+  const [choice, setChoice] = React.useState<SheetChoice | null>(null);
+  /** last sheet each courier's parcels went on this session */
+  const lastFor = React.useRef(new Map<string, string>());
+
+  const log = (line: DispatchLine) => setLines((prev) => [line, ...prev]);
 
   async function scan(code: string) {
     if (lines.some((l) => l.code === code && l.ok)) {
-      setLines((prev) => [{ code, ok: false, text: "Already dispatched in this session." }, ...prev]);
+      log({ code, ok: false, text: "Already dispatched in this session." });
       return;
     }
     setBusy(true);
-    try {
-      const res = await fetch(`/api/consignments/${encodeURIComponent(code)}`, { method: "POST" });
-      const body = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        number?: string;
-        loadSheet?: string;
-      };
-      setLines((prev) => [
-        res.ok
-          ? {
-              code,
-              ok: true,
-              text: `${body.number ?? code} dispatched${body.loadSheet ? ` onto ${body.loadSheet}` : ""}.`,
-            }
-          : { code, ok: false, text: body.error ?? `Server responded ${res.status}.` },
-        ...prev,
-      ]);
-    } catch {
-      setLines((prev) => [{ code, ok: false, text: "Couldn't reach the server." }, ...prev]);
-    } finally {
-      setBusy(false);
+    const { ok, status, reply } = await postScan(code);
+    setBusy(false);
+    if (status === 409 && reply.needsSheet) {
+      const courier = reply.courier ?? "";
+      const sheets = reply.sheets ?? [];
+      const last = lastFor.current.get(courier);
+      setPending({ code, number: reply.number ?? code, courier, sheets });
+      setChoice(last && sheets.some((s) => s.id === last) ? { target: last } : null);
+      return;
     }
+    log(
+      ok
+        ? { code, ok: true, text: `${reply.number ?? code} dispatched.` }
+        : { code, ok: false, text: reply.error ?? `Server responded ${status}.` },
+    );
+  }
+
+  async function confirm() {
+    if (!pending || !choice) return;
+    setBusy(true);
+    const { ok, status, reply } = await postScan(pending.code, { target: choice.target, location: choice.location });
+    setBusy(false);
+    if (ok) {
+      if (reply.loadSheetId) lastFor.current.set(pending.courier, reply.loadSheetId);
+      log({ code: pending.code, ok: true, text: `${reply.number ?? pending.number} dispatched onto ${reply.loadSheet ?? "the sheet"}.` });
+    } else {
+      log({ code: pending.code, ok: false, text: reply.error ?? `Server responded ${status}.` });
+    }
+    setPending(null);
+    setChoice(null);
   }
 
   function close() {
@@ -102,8 +178,10 @@ export function ScanDispatchButton() {
     if (lines.some((l) => l.ok)) {
       store.refresh("orders");
       store.refresh("dispatch");
+      store.refresh("shipments");
     }
     setLines([]);
+    setPending(null);
   }
 
   const dispatched = lines.filter((l) => l.ok).length;
@@ -118,24 +196,123 @@ export function ScanDispatchButton() {
         open={open}
         onClose={close}
         title="Scan to dispatch"
-        description="Each scanned label dispatches its order onto its courier's open draft load sheet. Only orders In Pickup & Packing (label printed) can be dispatched."
-        footer={<Button onClick={close}>Done{dispatched ? ` (${dispatched} dispatched)` : ""}</Button>}
+        description="Scan each printed label, then pick which of its courier's load sheets it goes on. Only orders In Pickup & Packing (label printed) can be dispatched."
+        footer={
+          <Button variant="outline" onClick={close}>
+            Done{dispatched ? ` (${dispatched} dispatched)` : ""}
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          {pending ? (
+            <form
+              className="space-y-3 rounded-lg border border-primary/40 bg-primary/5 p-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void confirm();
+              }}
+            >
+              <p className="text-sm">
+                <span className="font-medium">{pending.number}</span>
+                <span className="text-muted-foreground"> · {pending.courier} — which load sheet?</span>
+              </p>
+              <SheetPicker
+                name={`scan-${pending.code}`}
+                courier={pending.courier}
+                sheets={pending.sheets}
+                value={choice}
+                onChange={setChoice}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    log({ code: pending.code, ok: false, text: "Skipped — not dispatched." });
+                    setPending(null);
+                  }}
+                >
+                  Skip
+                </Button>
+                <Button type="submit" size="sm" disabled={!choice || busy} autoFocus>
+                  Dispatch onto sheet
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <ScanInput onScan={scan} disabled={busy} />
+          )}
+          <ScanLog lines={lines} />
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+/**
+ * A load sheet's own scanner: every scanned parcel goes straight onto this
+ * (Draft) sheet — dispatched, or added if it's already dispatched with no
+ * sheet. Opening the sheet's page is the choice, so several sheets can be
+ * loaded at once from different tabs or devices.
+ */
+export function ScanIntoSheetButton({
+  sheetId,
+  reference,
+  onDone,
+}: {
+  sheetId: string;
+  reference: string;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [lines, setLines] = React.useState<DispatchLine[]>([]);
+  const [busy, setBusy] = React.useState(false);
+
+  async function scan(code: string) {
+    if (lines.some((l) => l.code === code && l.ok)) {
+      setLines((prev) => [{ code, ok: false, text: `Already on ${reference}.` }, ...prev]);
+      return;
+    }
+    setBusy(true);
+    const { ok, status, reply } = await postScan(code, { target: sheetId });
+    setBusy(false);
+    setLines((prev) => [
+      ok
+        ? { code, ok: true, text: `${reply.number ?? code} loaded onto ${reference}.` }
+        : { code, ok: false, text: reply.error ?? `Server responded ${status}.` },
+      ...prev,
+    ]);
+  }
+
+  function close() {
+    setOpen(false);
+    if (lines.some((l) => l.ok)) onDone();
+    setLines([]);
+  }
+
+  const loaded = lines.filter((l) => l.ok).length;
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <QrCode />
+        Scan parcels on
+      </Button>
+      <Dialog
+        open={open}
+        onClose={close}
+        title={`Load ${reference}`}
+        description="Every label you scan is dispatched onto this sheet. Parcels need a printed label and must be booked with this sheet's courier."
+        footer={
+          <Button variant="outline" onClick={close}>
+            Done{loaded ? ` (${loaded} loaded)` : ""}
+          </Button>
+        }
       >
         <div className="space-y-4">
           <ScanInput onScan={scan} disabled={busy} />
-          <ul className="space-y-1.5">
-            {lines.map((l, i) => (
-              <li
-                key={`${l.code}-${i}`}
-                className={cn("flex items-start gap-2 text-sm", l.ok ? "text-success" : "text-destructive")}
-              >
-                {l.ok ? <Check className="mt-0.5 size-4 shrink-0" /> : <AlertCircle className="mt-0.5 size-4 shrink-0" />}
-                <span>
-                  <span className="font-mono">{l.code}</span> — {l.text}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <ScanLog lines={lines} />
         </div>
       </Dialog>
     </>
@@ -164,6 +341,12 @@ export function ScanLoadSheetButton() {
   const [otherName, setOtherName] = React.useState("");
   const sheetCourier = courier === "Other" ? (normalizeCourier(otherName).courier ?? "") : courier;
   const [location, setLocation] = React.useState(LOCATION_OPTIONS[0].value);
+  /** "new", or an open sheet of this courier to add the parcels to */
+  const [target, setTarget] = React.useState("new");
+  const [postNow, setPostNow] = React.useState(true);
+  const { rows: sheetRows } = useResource("dispatch");
+  const openSheets = openSheetsFor(sheetRows, sheetCourier);
+  const targetSheet = openSheets.find((s) => s.id === target);
   const [parcels, setParcels] = React.useState<Parcel[]>([]);
   const [scanError, setScanError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -213,7 +396,13 @@ export function ScanLoadSheetButton() {
       const res = await fetch("/api/dispatch/scan-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courier: sheetCourier, location, consignmentIds: parcels.map((p) => p.consignmentId) }),
+        body: JSON.stringify({
+          courier: sheetCourier,
+          location,
+          target,
+          post: postNow,
+          consignmentIds: parcels.map((p) => p.consignmentId),
+        }),
       });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -226,13 +415,16 @@ export function ScanLoadSheetButton() {
       }
       store.refresh("dispatch");
       store.refresh("orders");
+      store.refresh("shipments");
       const errs = body.dispatchErrors ?? [];
+      const verb = postNow ? "posted" : "updated";
       setParcels([]);
+      setTarget("new");
       setResult({
         ok: errs.length === 0,
         text: errs.length
-          ? `${body.row?.reference} posted, but some orders weren't marked dispatched: ${errs.join(" · ")}`
-          : `${body.row?.reference} posted — ${parcels.length} parcels dispatched.`,
+          ? `${body.row?.reference} ${verb}, but some orders weren't marked dispatched: ${errs.join(" · ")}`
+          : `${body.row?.reference} ${verb} — ${parcels.length} parcels dispatched.`,
       });
     } catch {
       setResult({ ok: false, text: "Couldn't reach the server." });
@@ -258,7 +450,7 @@ export function ScanLoadSheetButton() {
         }}
         className="max-w-xl"
         title="Scan a load sheet"
-        description="Scan every parcel you're handing to the courier. Creating the sheet posts it and marks each order Dispatched."
+        description="Scan every parcel you're handing to the courier, onto a new sheet or one of the courier's open sheets. Each order is marked Dispatched."
         footer={
           <>
             <Button
@@ -272,7 +464,7 @@ export function ScanLoadSheetButton() {
             </Button>
             <Button onClick={create} disabled={busy || parcels.length === 0}>
               {busy ? <Loader2 className="animate-spin" /> : null}
-              Create load sheet ({parcels.length})
+              {targetSheet ? `Add to ${targetSheet.reference}` : "Create load sheet"} ({parcels.length})
             </Button>
           </>
         }
@@ -284,7 +476,10 @@ export function ScanLoadSheetButton() {
               <Select
                 id="ls-courier"
                 value={courier}
-                onChange={(e) => setCourier(e.target.value)}
+                onChange={(e) => {
+                  setCourier(e.target.value);
+                  setTarget("new");
+                }}
                 disabled={parcels.length > 0}
               >
                 {COURIER_OPTIONS.map((o) => (
@@ -305,16 +500,40 @@ export function ScanLoadSheetButton() {
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ls-location">Location</Label>
-              <Select id="ls-location" value={location} onChange={(e) => setLocation(e.target.value)}>
-                {LOCATION_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+              <Label htmlFor="ls-target">Load sheet</Label>
+              <Select
+                id="ls-target"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                disabled={parcels.length > 0}
+              >
+                <option value="new">A new sheet</option>
+                {openSheets.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.reference} · {o.totalShipments} parcels
                   </option>
                 ))}
               </Select>
+              {target === "new" ? (
+                <Select aria-label="Dispatching from" value={location} onChange={(e) => setLocation(e.target.value)}>
+                  {LOCATION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      From {o.label}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
             </div>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={postNow}
+              onChange={(e) => setPostNow(e.target.checked)}
+            />
+            Post the sheet when done — the rider is leaving with these parcels
+          </label>
 
           <ScanInput onScan={scan} disabled={busy} />
           {scanError ? <p className="text-sm text-destructive">{scanError}</p> : null}

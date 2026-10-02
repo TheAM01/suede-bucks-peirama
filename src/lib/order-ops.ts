@@ -1,6 +1,8 @@
 import "server-only";
 import { getDb, isDbConfigured } from "./db";
 import type { Row } from "@/config/resource-types";
+import { ON_SHEET_STAGES } from "@/config/order-workflow";
+import { detachFromLoadSheet, findSheetByReference } from "./dispatch";
 
 /**
  * Order operational status — the tab bar on the Orders page (Exception,
@@ -269,10 +271,18 @@ export async function setOrderOps(
     const before = await c.col.findOne({ _id: orderId });
     const from = before?.opsStatus ?? DEFAULT_STATUS;
     if (from === status) return {};
+    // Moving a parcel back before hand-over takes it off its load sheet, so
+    // the sheet never lists an order that says it hasn't left.
+    const leavesSheet = Boolean(before?.loadSheet) && !ON_SHEET_STAGES.includes(String(status));
+    if (leavesSheet) {
+      const released = await releaseFromSheet(before!);
+      if (released.error) return released;
+    }
     await c.col.updateOne(
       { _id: orderId },
       {
         $set: { opsStatus: status, updatedAt: now },
+        ...(leavesSheet ? { $unset: { loadSheet: "", dispatchedAt: "" } } : {}),
         $push: { history: { at: now, action: "set_status", from, to: status } },
         $setOnInsert: { createdAt: now },
       },
@@ -282,6 +292,28 @@ export async function setOrderOps(
   } catch {
     return { error: DB_DOWN };
   }
+}
+
+/**
+ * Take an order's parcel off its load sheet — only while that sheet is still
+ * a Draft. A handed-over (posted / archived) sheet is a record of what left
+ * with the courier, so it's refused. Doesn't touch the order doc itself.
+ */
+export async function releaseFromSheet(doc: OrderOpsDoc): Promise<{ error?: string }> {
+  if (!doc.loadSheet) return {};
+  const { sheet, error } = await findSheetByReference(doc.loadSheet);
+  if (error) return { error };
+  if (!sheet) return {};
+  if (sheet.status !== "draft") {
+    return {
+      error: `${doc.number ?? "This order"} is on load sheet ${doc.loadSheet}, which has been handed to the courier — mark it returned instead.`,
+    };
+  }
+  return detachFromLoadSheet(sheet.id, {
+    consignmentId: doc.consignmentId ?? "",
+    total: doc.total ?? 0,
+    codAmount: doc.codAmount ?? 0,
+  });
 }
 
 /** Drop an order's workflow record (after the Shopify order itself was deleted). Best-effort. */

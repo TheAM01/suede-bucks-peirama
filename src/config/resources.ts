@@ -972,6 +972,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
         required: true,
         half: true,
         options: COURIER_OPTIONS,
+        help: "Locked once parcels are on the sheet — every parcel must be with this courier.",
       },
       {
         key: "location",
@@ -1004,9 +1005,10 @@ export const RESOURCES: Record<string, ResourceConfig> = {
         ],
         help: "Whether the COD this sheet's courier collected has been settled back to the store.",
       },
-      { key: "totalShipments", label: "Total shipments", type: "number", half: true },
-      { key: "totalAmount", label: "Total amount", type: "currency", half: true },
-      { key: "codAmount", label: "COD amount", type: "currency", half: true },
+      // Counted from the parcels on the sheet — never typed in, so they can't drift.
+      { key: "totalShipments", label: "Total shipments", type: "number", half: true, hidden: true },
+      { key: "totalAmount", label: "Total amount", type: "currency", half: true, hidden: true },
+      { key: "codAmount", label: "COD amount", type: "currency", half: true, hidden: true },
       { key: "weight", label: "Weight (kg)", type: "number", half: true, placeholder: "kg" },
       { key: "notes", label: "Notes", type: "textarea" },
     ],

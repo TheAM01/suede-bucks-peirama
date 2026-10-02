@@ -7,58 +7,73 @@ import { statusLabel } from "@/config/order-workflow";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SheetPicker, type OpenSheet, type SheetChoice } from "@/components/dashboard/sheet-picker";
+import { postScan, type ScanReply } from "@/components/dashboard/scanners";
 
 type Result =
   | { state: "working" }
+  | { state: "pick"; number: string; orderId: string; courier: string; sheets: OpenSheet[] }
   | { state: "done"; number: string; orderId: string; from: string; to: string; loadSheet?: string }
   | { state: "error"; message: string; number?: string; orderId?: string };
 
-/** Advances the scanned parcel's order once on load, then shows what happened. */
+/**
+ * Advances the scanned parcel's order once on load, then shows what happened.
+ * Dispatching asks first: the server answers `needsSheet` with the courier's
+ * open load sheets, and the order only moves once one is picked (or a new one).
+ */
 export function ScanAdvance({ consignmentId }: { consignmentId: string }) {
   const [result, setResult] = React.useState<Result>({ state: "working" });
+  const [choice, setChoice] = React.useState<SheetChoice | null>(null);
   // Effects run twice in dev Strict Mode — a scan must move the order exactly once.
   const fired = React.useRef(false);
+
+  const settle = React.useCallback(
+    (ok: boolean, status: number, body: ScanReply) => {
+      if (status === 409 && body.needsSheet) {
+        setResult({
+          state: "pick",
+          number: body.number ?? consignmentId,
+          orderId: body.orderId ?? "",
+          courier: body.courier ?? "",
+          sheets: body.sheets ?? [],
+        });
+      } else if (!ok || !body.status) {
+        setResult({
+          state: "error",
+          message: body.error ?? `Server responded ${status}.`,
+          number: body.number,
+          orderId: body.orderId,
+        });
+      } else {
+        setResult({
+          state: "done",
+          number: body.number ?? consignmentId,
+          orderId: body.orderId ?? "",
+          from: body.from ?? "",
+          to: body.status,
+          loadSheet: body.loadSheet,
+        });
+      }
+    },
+    [consignmentId],
+  );
 
   React.useEffect(() => {
     if (fired.current) return;
     fired.current = true;
-    (async () => {
-      try {
-        const res = await fetch(`/api/consignments/${encodeURIComponent(consignmentId)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ advance: true }),
-        });
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          number?: string;
-          orderId?: string;
-          from?: string;
-          status?: string;
-          loadSheet?: string;
-        };
-        if (!res.ok || !body.status) {
-          setResult({
-            state: "error",
-            message: body.error ?? `Server responded ${res.status}.`,
-            number: body.number,
-            orderId: body.orderId,
-          });
-        } else {
-          setResult({
-            state: "done",
-            number: body.number ?? consignmentId,
-            orderId: body.orderId ?? "",
-            from: body.from ?? "",
-            to: body.status,
-            loadSheet: body.loadSheet,
-          });
-        }
-      } catch {
-        setResult({ state: "error", message: "Couldn't reach the server." });
-      }
-    })();
-  }, [consignmentId]);
+    void postScan(consignmentId, { advance: true }).then(({ ok, status, reply }) => settle(ok, status, reply));
+  }, [consignmentId, settle]);
+
+  async function dispatchOnto() {
+    if (!choice) return;
+    setResult({ state: "working" });
+    const { ok, status, reply } = await postScan(consignmentId, {
+      advance: true,
+      target: choice.target,
+      location: choice.location,
+    });
+    settle(ok, status, reply);
+  }
 
   const orderId = result.state === "working" ? undefined : result.orderId;
 
@@ -74,6 +89,25 @@ export function ScanAdvance({ consignmentId }: { consignmentId: string }) {
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="size-8 animate-spin text-muted-foreground" />
             <p className="text-sm text-muted-foreground">Updating order…</p>
+          </div>
+        ) : result.state === "pick" ? (
+          <div className="space-y-4 text-left">
+            <div className="text-center">
+              <p className="font-heading text-xl font-semibold">{result.number}</p>
+              <p className="text-sm text-muted-foreground">
+                Ready to dispatch with {result.courier} — which load sheet?
+              </p>
+            </div>
+            <SheetPicker
+              name="scan-sheet"
+              courier={result.courier}
+              sheets={result.sheets}
+              value={choice}
+              onChange={setChoice}
+            />
+            <Button className="w-full" disabled={!choice} onClick={() => void dispatchOnto()}>
+              Dispatch onto sheet
+            </Button>
           </div>
         ) : result.state === "done" ? (
           <div className="flex flex-col items-center gap-3">

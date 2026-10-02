@@ -3,6 +3,7 @@ import type { Row } from "@/config/resource-types";
 import { getLoadSheet } from "./dispatch";
 import { findBySheet } from "./order-ops";
 import { readOrderSummaries } from "./shopify-order-detail";
+import { ON_SHEET_STAGES, statusLabel } from "@/config/order-workflow";
 
 /**
  * Everything the load sheet detail page and its printable manifest show: the
@@ -22,6 +23,9 @@ export interface SheetParcel {
   customer: string;
   city: string;
   phone: string;
+  courier: string;
+  /** why this parcel disagrees with the sheet (courier, stage, or the order pointing elsewhere); empty when in sync */
+  syncIssue: string;
 }
 
 export interface LoadSheetDetail {
@@ -50,9 +54,25 @@ export async function getLoadSheetDetail(
   );
 
   const summaries = await readOrderSummaries(docs.map((d) => d._id));
+  const sheetCourier = String(sheet.courier ?? "");
   const parcels = docs.map((d): SheetParcel => {
     const s = summaries.byId.get(d._id);
+    const listed = ids.includes(d.consignmentId ?? "");
+    const syncIssue =
+      d.courier && d.courier !== sheetCourier
+        ? `Booked with ${d.courier}, but this is a ${sheetCourier} sheet`
+        : !ON_SHEET_STAGES.includes(d.opsStatus)
+          ? `The order is in ${statusLabel(d.opsStatus)} — it hasn't been handed over`
+          : d.loadSheet !== reference
+            ? d.loadSheet
+              ? `The order says it's on ${d.loadSheet}`
+              : "The order isn't linked to a sheet"
+            : !listed
+              ? "Not in this sheet's consignment list"
+              : "";
     return {
+      courier: d.courier ?? "",
+      syncIssue,
       orderId: d._id,
       number: d.number ?? "",
       consignmentId: d.consignmentId ?? "",

@@ -4,8 +4,8 @@ import { getResource } from "@/config/resources";
 import { SHOPIFY_WRITERS } from "@/lib/shopify-writes";
 import { isAppOwned, updateAppRow, deleteAppRow } from "@/lib/app-data";
 import { updateAdjustment, deleteAdjustment } from "@/lib/stock-adjustments";
-import { updateLoadSheet, deleteLoadSheet, type LoadSheetResource } from "@/lib/dispatch";
-import { setOrderOps, deleteOrderOps } from "@/lib/order-ops";
+import { updateLoadSheet, deleteLoadSheet, findSheetByReference, type LoadSheetResource } from "@/lib/dispatch";
+import { setOrderOps, deleteOrderOps, getOrderOps, releaseFromSheet } from "@/lib/order-ops";
 import { deleteDoc, updateDocHeader } from "@/lib/inventory-docs";
 import { reconcileLoadSheets, validateRemittance } from "@/lib/logistics";
 import { isInventoryDocKind } from "@/config/inventory-docs";
@@ -118,8 +118,21 @@ export async function DELETE(
   }
 
   if (g.resource === "orders") {
+    // Keep load sheets in sync: an order on an open sheet comes off it; one on
+    // a handed-over sheet can't be deleted (the sheet is the handover record).
+    const ops = await getOrderOps(g.id);
+    if (ops.doc?.loadSheet) {
+      const { sheet } = await findSheetByReference(ops.doc.loadSheet);
+      if (sheet && sheet.status !== "draft") {
+        return NextResponse.json(
+          { error: `${ops.doc.number ?? "This order"} is on load sheet ${ops.doc.loadSheet}, which has been handed to the courier — it can't be deleted.` },
+          { status: 409 },
+        );
+      }
+    }
     const { error } = await SHOPIFY_WRITERS.orders.remove!(g.id);
     if (error) return NextResponse.json({ error }, { status: 502 });
+    if (ops.doc?.loadSheet) await releaseFromSheet(ops.doc);
     // The Shopify order is gone; its workflow record would only be an orphan.
     await deleteOrderOps(g.id);
     return NextResponse.json({ ok: true });

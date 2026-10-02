@@ -16,7 +16,7 @@ import { readOrderBrief } from "./shopify-order-detail";
 import { fulfillOrder, setOrderTags, updateOrderShipping } from "./shopify-writes";
 import { readAppSettings } from "./app-settings";
 import { renderConsignmentId } from "@/config/consignment-schema";
-import { attachToLoadSheet, resolveLoadSheet } from "./dispatch";
+import { attachToLoadSheet, detachFromLoadSheet, findSheetByReference, resolveLoadSheet } from "./dispatch";
 
 /**
  * The Orders workflow: every control-panel action (Modify, Move, Discard,
@@ -69,11 +69,6 @@ export async function runOrderAction(
   if (error || !doc) return { error: error ?? "Couldn't load the order's status." };
   const from = doc.opsStatus;
 
-  if (action === "mark_fulfilled" && from === "dispatched" && doc.courier !== MANUAL_COURIER) {
-    return {
-      error: `Only manual-courier orders are marked fulfilled by hand — ${doc.courier || "this courier"}'s delivery updates come from the courier.`,
-    };
-  }
   if (!canRun(action, from, doc.courier)) {
     return {
       error: `Can't ${ACTION_LABEL[action].toLowerCase()} an order that's in ${statusLabel(from)}.`,
@@ -219,7 +214,8 @@ export async function runOrderAction(
       if (!doc.consignmentId || !doc.courier) {
         return { error: "No consignment on this order — assign one before it goes on a load sheet." };
       }
-      const resolved = await resolveLoadSheet(doc.courier, payload.target);
+      // The sheet is always the user's choice (an open sheet's id, or "new").
+      const resolved = await resolveLoadSheet(doc.courier, payload.target, str(payload.location) || undefined);
       if (!resolved.sheet) return { error: resolved.error };
       const { id: sheetId, reference } = resolved.sheet;
 
@@ -239,6 +235,37 @@ export async function runOrderAction(
         return { error: `${action === "dispatch" ? "Dispatched" : "Recorded"}, but ${reference} wasn't updated: ${attached.error}` };
       }
       return { ...res, loadSheet: reference, loadSheetId: sheetId };
+    }
+
+    case "remove_from_sheet":
+    case "move_to_sheet": {
+      if (!doc.loadSheet) return { error: "This parcel isn't on a load sheet." };
+      const current = await findSheetByReference(doc.loadSheet);
+      if (current.error) return { error: current.error };
+      if (current.sheet && current.sheet.status !== "draft") {
+        return { error: `${doc.loadSheet} has been handed over — its parcels can't be moved off it.` };
+      }
+      const parcel = { consignmentId: doc.consignmentId ?? "", total: doc.total ?? 0, codAmount: doc.codAmount ?? 0 };
+
+      if (action === "remove_from_sheet") {
+        const res = await move("in_pickup_packing", {}, `Taken off load sheet ${doc.loadSheet} — back to In Pickup & Packing`, [
+          "loadSheet",
+          "dispatchedAt",
+        ]);
+        if (res.error) return res;
+        if (current.sheet) await detachFromLoadSheet(current.sheet.id, parcel);
+        return res;
+      }
+
+      const resolved = await resolveLoadSheet(doc.courier ?? "", payload.target, str(payload.location) || undefined);
+      if (!resolved.sheet) return { error: resolved.error };
+      if (resolved.sheet.reference === doc.loadSheet) return { error: `Already on ${doc.loadSheet}.` };
+      const res = await move(from, { loadSheet: resolved.sheet.reference }, `Moved from load sheet ${doc.loadSheet} to ${resolved.sheet.reference}`);
+      if (res.error) return res;
+      if (current.sheet) await detachFromLoadSheet(current.sheet.id, parcel);
+      const attached = await attachToLoadSheet(resolved.sheet.id, parcel);
+      if (attached.error) return { error: `Moved, but ${resolved.sheet.reference} wasn't updated: ${attached.error}` };
+      return { ...res, loadSheet: resolved.sheet.reference, loadSheetId: resolved.sheet.id };
     }
 
     case "mark_fulfilled": {

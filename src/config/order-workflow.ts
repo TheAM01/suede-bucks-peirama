@@ -10,9 +10,10 @@
  *              │    Package)   booked)
  *   Booking Failed ──────────────^
  *
- *   Dispatched ─> Fulfilled   (manual courier only: "Mark fulfilled" or a
- *                              second label scan on delivery — Insta has no
- *                              manual step, its updates belong to its API)
+ *   Dispatched ─> Fulfilled   ("Mark fulfilled", any courier; for the manual
+ *                              courier also a second label scan on delivery)
+ *
+ *   Every dispatch goes on a load sheet the user picks (never automatic).
  */
 
 /** Tab order follows the workflow: triage first, then the packing/dispatch pipeline, then everything else. */
@@ -52,6 +53,8 @@ export type OrderAction =
   | "mark_fulfilled"
   | "mark_delivered"
   | "mark_returned"
+  | "remove_from_sheet"
+  | "move_to_sheet"
   | "cancel";
 
 /** Every stage an order can still be edited in — all but Canceled. */
@@ -78,11 +81,16 @@ export const ACTION_FROM: Record<OrderAction, readonly string[]> = {
   dispatch: ["in_pickup_packing"],
   /** a dispatched order that isn't on any load sheet yet (dispatched before sheets were automatic) */
   add_to_load_sheet: ["dispatched"],
-  mark_fulfilled: ["dispatched"],
+  /** any courier: creates the Shopify fulfillment (manual-courier riders can also do it with a second label scan) */
+  mark_fulfilled: ["dispatched", "delivered"],
   /** shipment tracking: the courier confirmed delivery (API couriers; manual ones use Mark fulfilled) */
   mark_delivered: ["dispatched"],
   /** shipment tracking: the parcel came back undelivered (RTO) */
   mark_returned: ["dispatched", "fulfilled", "delivered"],
+  /** take a parcel off its (still Draft) load sheet — it goes back to In Pickup & Packing */
+  remove_from_sheet: ["dispatched"],
+  /** move a parcel to another Draft sheet of the same courier */
+  move_to_sheet: ["dispatched"],
   cancel: ["finalized", "in_pickup_packing"],
 };
 
@@ -100,17 +108,19 @@ export const ACTION_LABEL: Record<OrderAction, string> = {
   mark_fulfilled: "Mark fulfilled",
   mark_delivered: "Mark delivered",
   mark_returned: "Mark returned (RTO)",
+  remove_from_sheet: "Remove from load sheet",
+  move_to_sheet: "Move to another sheet",
   cancel: "Cancel",
 };
 
-/** The in-house Karachi courier — no API, so delivery is confirmed by hand (Mark fulfilled). */
+/** The in-house Karachi courier — no API, so delivery is confirmed by hand (Mark fulfilled, or a second label scan). */
 export const MANUAL_COURIER = "Manual (Karachi)";
 
-/** Actions only valid for parcels carried by the manual courier. */
-const MANUAL_ONLY: OrderAction[] = ["mark_fulfilled"];
+/** Stages where a parcel has been handed over, so it belongs on a load sheet. */
+export const ON_SHEET_STAGES = ["dispatched", "fulfilled", "delivered", "returned"];
 
-export function canRun(action: OrderAction, status: unknown, courier?: unknown): boolean {
-  if (MANUAL_ONLY.includes(action) && courier !== MANUAL_COURIER) return false;
+export function canRun(action: OrderAction, status: unknown, _courier?: unknown): boolean {
+  void _courier;
   return ACTION_FROM[action].includes(String(status));
 }
 
@@ -149,8 +159,9 @@ export function defaultCourierFor(city: unknown): string {
  * label only exists once printed, so a Finalized parcel moves to In Pickup &
  * Packing, a parcel already there is dispatched, and a dispatched
  * manual-courier parcel scanned again (by the rider, on delivery) is marked
- * fulfilled. Anything else is left where it is and the scan page just
- * reports its status.
+ * fulfilled — other couriers' parcels are fulfilled from the app, never by a
+ * stray rescan. Dispatching always asks which load sheet. Anything else is
+ * left where it is and the scan page just reports its status.
  */
 export const SCAN_ADVANCE: Partial<Record<string, OrderAction>> = {
   finalized: "print_label",

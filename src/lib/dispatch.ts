@@ -195,8 +195,27 @@ export async function updateLoadSheet(
     const existing = await col.findOne({ _id: oid });
     if (!existing) return { error: "That load sheet no longer exists." };
 
+    const fields: Record<string, unknown> = { ...values };
+    if (resource === "dispatch") {
+      const loaded = Array.isArray(existing.consignmentIds) ? existing.consignmentIds.length : 0;
+      // Orders, sheets, and couriers stay in sync: a loaded sheet keeps its
+      // courier, and its totals only ever come from its parcels.
+      if (loaded > 0 && values.courier !== existing.courier) {
+        return {
+          error: `${existing.reference} has ${loaded} ${existing.courier} ${loaded === 1 ? "parcel" : "parcels"} on it — its courier can't change. Move or remove them first.`,
+        };
+      }
+      delete fields.totalShipments;
+      delete fields.totalAmount;
+      delete fields.codAmount;
+    }
+    // A handed-over sheet can't reopen for loading.
+    if (values.status === "draft" && existing.status !== "draft") {
+      return { error: `${existing.reference} has been handed over — it can't go back to Draft.` };
+    }
+
     const now = new Date().toISOString();
-    const fields: Record<string, unknown> = { ...values, updatedAt: now };
+    fields.updatedAt = now;
     // Stamp datePosted the first time a sheet reaches "posted"; never overwrite it after.
     if (values.status === "posted" && !existing.datePosted) {
       fields.datePosted = now;
@@ -236,7 +255,7 @@ export async function deleteLoadSheet(
 
 // --- dispatched parcels onto sheets ------------------------------------------------
 
-/** Where automatically opened sheets are dispatched from. */
+/** Where a new sheet dispatches from when the user doesn't say. */
 const DEFAULT_LOCATION = "Main Warehouse";
 
 export interface SheetRef {
@@ -245,23 +264,10 @@ export interface SheetRef {
 }
 
 /**
- * Per-courier lock so parallel dispatches (a batch from the control panel,
- * two scanners at once) can't each open their own "automatic" draft sheet.
- * In-process only — fine for this single-server deployment.
- */
-const sheetLocks = new Map<string, Promise<unknown>>();
-function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const prev = sheetLocks.get(key) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
-  sheetLocks.set(key, next.catch(() => undefined));
-  return next;
-}
-
-/**
- * Pick the load sheet a dispatched parcel goes on.
- * - `"auto"` (default): the courier's newest Draft sheet, opening one if there's none.
- * - `"new"`: always start a fresh Draft sheet.
- * - a sheet id: that sheet — must be a Draft for the same courier.
+ * The load sheet a dispatched parcel goes on — always chosen by the user,
+ * never picked automatically:
+ * - a sheet id: that sheet, which must be a Draft for the same courier;
+ * - `"new"`: start a new Draft sheet for the courier (from `location`).
  */
 export async function resolveLoadSheet(
   courier: string,
@@ -269,47 +275,76 @@ export async function resolveLoadSheet(
   location: string = DEFAULT_LOCATION,
 ): Promise<{ sheet?: SheetRef; error?: string }> {
   if (!courier) return { error: "The order has no courier — assign a consignment first." };
-  const t = str(target) || "auto";
+  const t = str(target);
+  if (!t || t === "auto") return { error: `Pick which ${courier} load sheet this goes on.` };
   try {
     const db = await getDb();
     if (!db) return { error: DB_UNAVAILABLE };
     const col = db.collection<Doc>(COLLECTION.dispatch);
 
-    if (t !== "auto" && t !== "new") {
-      if (!ObjectId.isValid(t)) return { error: "Pick a load sheet." };
-      const doc = await col.findOne({ _id: new ObjectId(t) });
-      if (!doc) return { error: "That load sheet no longer exists." };
-      if (doc.status !== "draft") {
-        return { error: `${doc.reference} is already ${doc.status} — parcels can only be added to a Draft sheet.` };
-      }
-      if (doc.courier !== courier) {
-        return { error: `${doc.reference} is for ${doc.courier}, but this parcel is booked with ${courier}.` };
-      }
-      return { sheet: { id: t, reference: String(doc.reference) } };
-    }
-
-    const open = async (): Promise<{ sheet?: SheetRef; error?: string }> => {
+    if (t === "new") {
       const created = await createLoadSheet("dispatch", {
         courier,
-        location,
+        location: location || DEFAULT_LOCATION,
         status: "draft",
         reconciliation: "pending",
         totalShipments: 0,
         totalAmount: 0,
         codAmount: 0,
         weight: 0,
-        notes: "Opened automatically when orders were dispatched.",
+        notes: "",
       });
       if (!created.row) return { error: created.error };
       return { sheet: { id: created.row.id, reference: String(created.row.reference) } };
-    };
+    }
 
-    if (t === "new") return open();
-    return withLock(`dispatch:${courier}`, async () => {
-      const draft = await col.find({ courier, status: "draft" }).sort({ _id: -1 }).limit(1).next();
-      if (draft) return { sheet: { id: draft._id.toHexString(), reference: String(draft.reference) } };
-      return open();
-    });
+    if (!ObjectId.isValid(t)) return { error: "Pick a load sheet." };
+    const doc = await col.findOne({ _id: new ObjectId(t) });
+    if (!doc) return { error: "That load sheet no longer exists." };
+    if (doc.status !== "draft") {
+      return { error: `${doc.reference} is already ${doc.status} — parcels can only be added to a Draft sheet.` };
+    }
+    if (doc.courier !== courier) {
+      return { error: `${doc.reference} is for ${doc.courier}, but this parcel is booked with ${courier}.` };
+    }
+    return { sheet: { id: t, reference: String(doc.reference) } };
+  } catch {
+    return { error: DB_UNAVAILABLE };
+  }
+}
+
+/** A courier's open (Draft) sheets, newest first — the choices offered when dispatching. */
+export async function listDraftSheets(
+  courier: string,
+): Promise<{ sheets?: { id: string; reference: string; location: string; totalShipments: number }[]; error?: string }> {
+  try {
+    const db = await getDb();
+    if (!db) return { error: DB_UNAVAILABLE };
+    const docs = await db
+      .collection<Doc>(COLLECTION.dispatch)
+      .find({ courier, status: "draft" })
+      .sort({ _id: -1 })
+      .toArray();
+    return {
+      sheets: docs.map((d) => ({
+        id: d._id.toHexString(),
+        reference: String(d.reference),
+        location: String(d.location ?? ""),
+        totalShipments: numOr0(d.totalShipments),
+      })),
+    };
+  } catch {
+    return { error: DB_UNAVAILABLE };
+  }
+}
+
+/** A dispatch sheet by its reference (orders store the reference, not the id). */
+export async function findSheetByReference(reference: string): Promise<{ sheet?: Row | null; error?: string }> {
+  try {
+    const db = await getDb();
+    if (!db) return { error: DB_UNAVAILABLE };
+    const doc = await db.collection<Doc>(COLLECTION.dispatch).findOne({ reference });
+    return { sheet: doc ? toRow(doc) : null };
   } catch {
     return { error: DB_UNAVAILABLE };
   }
@@ -342,6 +377,33 @@ export async function attachToLoadSheet(
           totalShipments: 1,
           totalAmount: numOr0(parcel.total),
           codAmount: numOr0(parcel.codAmount),
+        },
+        $set: { updatedAt: new Date().toISOString() },
+      },
+    );
+    return {};
+  } catch {
+    return { error: DB_UNAVAILABLE };
+  }
+}
+
+/** Take one parcel off a sheet (the reverse of attachToLoadSheet). A no-op if it isn't on it. */
+export async function detachFromLoadSheet(
+  sheetId: string,
+  parcel: { consignmentId: string; total: number; codAmount: number },
+): Promise<{ error?: string }> {
+  if (!ObjectId.isValid(sheetId)) return { error: "Invalid load sheet id." };
+  try {
+    const db = await getDb();
+    if (!db) return { error: DB_UNAVAILABLE };
+    await db.collection<SheetTotals>(COLLECTION.dispatch).updateOne(
+      { _id: new ObjectId(sheetId), consignmentIds: parcel.consignmentId },
+      {
+        $pull: { consignmentIds: parcel.consignmentId },
+        $inc: {
+          totalShipments: -1,
+          totalAmount: -numOr0(parcel.total),
+          codAmount: -numOr0(parcel.codAmount),
         },
         $set: { updatedAt: new Date().toISOString() },
       },

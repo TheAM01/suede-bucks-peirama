@@ -46,6 +46,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BulkActionsMenu, openInNewTabs } from "./bulk-actions-menu";
+import { SheetPicker, openSheetsFor, type SheetChoice } from "./sheet-picker";
 import { SelectionDock } from "./selection-dock";
 import { LoadingState } from "@/components/ui/spinner";
 import type { IconType } from "@/components/icons";
@@ -186,11 +187,15 @@ export function OrderControlPanel({
     // the first order opened (per courier), not open one sheet per order.
     const results: { row: Row; res: ActionResponse }[] = [];
     const newSheetFor = new Map<string, string>();
+    // Sheet steps carry the user's choice per courier (`sheetFor`).
+    const { sheetFor, ...rest } = payload as { sheetFor?: Record<string, SheetChoice> } & Record<string, unknown>;
     for (const r of targets) {
       const courier = String(r.courier ?? "");
-      const reuse = payload.target === "new" ? newSheetFor.get(courier) : undefined;
-      const res = await postOrderAction(r.id, action, reuse ? { ...payload, target: reuse } : payload);
-      if (payload.target === "new" && res.loadSheetId && !newSheetFor.has(courier)) {
+      const choice = sheetFor?.[courier];
+      const reuse = choice?.target === "new" ? newSheetFor.get(courier) : undefined;
+      const body = choice ? { ...rest, target: reuse ?? choice.target, location: choice.location } : rest;
+      const res = await postOrderAction(r.id, action, body);
+      if (choice?.target === "new" && res.loadSheetId && !newSheetFor.has(courier)) {
         newSheetFor.set(courier, res.loadSheetId);
       }
       results.push({ row: r, res });
@@ -440,9 +445,9 @@ export function OrderControlPanel({
           rows={rows}
           action={sheetAction}
           onClose={close}
-          onSubmit={(target) => {
+          onSubmit={(sheetFor) => {
             close();
-            void run(sheetAction, rows, { target });
+            void run(sheetAction, rows, { sheetFor });
           }}
         />
       ) : null}
@@ -493,10 +498,9 @@ export function OrderControlPanel({
 // --- dialogs -------------------------------------------------------------------------
 
 /**
- * Which load sheet dispatched parcels go on: the courier's open Draft sheet
- * (the default — opened automatically if there's none), a specific Draft
- * sheet, or a new one. Specific sheets are only offered when every selected
- * order uses the same courier, since a sheet belongs to one courier.
+ * Which load sheet dispatched parcels go on — asked every time, one choice per
+ * courier in the selection (a sheet belongs to one courier): one of that
+ * courier's open Draft sheets, or a new one. Nothing is preselected.
  */
 function LoadSheetDialog({
   rows,
@@ -507,69 +511,56 @@ function LoadSheetDialog({
   rows: Row[];
   action: OrderAction;
   onClose: () => void;
-  onSubmit: (target: string) => void;
+  onSubmit: (sheetFor: Record<string, SheetChoice>) => void;
 }) {
   const { rows: sheets, loading } = useResource("dispatch");
   const couriers = Array.from(new Set(rows.map((r) => String(r.courier ?? ""))));
-  const courier = couriers.length === 1 ? couriers[0] : null;
-  const drafts = courier
-    ? sheets.filter((s) => s.status === "draft" && s.courier === courier)
-    : [];
-  const [target, setTarget] = React.useState("auto");
-
-  const options = [
-    {
-      value: "auto",
-      label: courier
-        ? drafts.length
-          ? `${courier}'s open draft sheet (${String(drafts[0].reference)})`
-          : `${courier}'s open draft sheet — none yet, one will be started`
-        : "Each courier's open draft sheet (started if needed)",
-    },
-    ...drafts.slice(1).map((s) => ({
-      value: s.id,
-      label: `${String(s.reference)} · ${String(s.location)} · ${Number(s.totalShipments ?? 0)} parcels`,
-    })),
-    { value: "new", label: courier ? `A new ${courier} load sheet` : "A new load sheet per courier" },
-  ];
+  const [choice, setChoice] = React.useState<Record<string, SheetChoice>>({});
+  const missingCourier = couriers.includes("");
+  const ready = !missingCourier && couriers.every((c) => choice[c]);
 
   return (
     <Dialog
       open
       onClose={onClose}
       title={`${ACTION_LABEL[action]} — ${num(rows)}`}
-      description="Dispatched parcels go on a load sheet so the courier's handover and COD are accounted for. Post the sheet from the Dispatch page when the rider leaves."
+      description="Pick the load sheet for each courier. Post a sheet from the Dispatch page when its rider leaves."
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => onSubmit(target)}>
+          <Button onClick={() => onSubmit(choice)} disabled={!ready}>
             <Truck />
             {ACTION_LABEL[action]}
           </Button>
         </>
       }
     >
-      <fieldset className="space-y-2">
-        <legend className="mb-2 text-sm font-medium">Put them on</legend>
-        {options.map((o) => (
-          <label
-            key={o.value}
-            className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-sm transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5"
-          >
-            <input
-              type="radio"
-              name="load-sheet-target"
-              className="mt-0.5 size-4 accent-primary"
-              checked={target === o.value}
-              onChange={() => setTarget(o.value)}
-            />
-            <span>{o.label}</span>
-          </label>
-        ))}
-        {loading ? <p className="text-xs text-muted-foreground">Loading open sheets…</p> : null}
-      </fieldset>
+      {missingCourier ? (
+        <p className="text-sm text-destructive">Some of these orders have no courier — assign their consignments first.</p>
+      ) : loading ? (
+        <p className="text-sm text-muted-foreground">Loading open sheets…</p>
+      ) : (
+        <div className="space-y-5">
+          {couriers.map((c) => {
+            return (
+              <fieldset key={c}>
+                <legend className="mb-2 text-sm font-medium">
+                  {c} <span className="font-normal text-muted-foreground">· {num(rows.filter((r) => String(r.courier ?? "") === c))}</span>
+                </legend>
+                <SheetPicker
+                  name={`sheet-${c}`}
+                  courier={c}
+                  sheets={openSheetsFor(sheets, c)}
+                  value={choice[c] ?? null}
+                  onChange={(v) => setChoice((prev) => ({ ...prev, [c]: v }))}
+                />
+              </fieldset>
+            );
+          })}
+        </div>
+      )}
     </Dialog>
   );
 }
