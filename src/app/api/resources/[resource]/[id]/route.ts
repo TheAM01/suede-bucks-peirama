@@ -9,6 +9,7 @@ import { setOrderOps, deleteOrderOps, getOrderOps, releaseFromSheet } from "@/li
 import { deleteDoc, updateDocHeader } from "@/lib/inventory-docs";
 import { reconcileLoadSheets, validateRemittance } from "@/lib/logistics";
 import { isInventoryDocKind } from "@/config/inventory-docs";
+import { prepareRegister } from "@/lib/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,14 @@ export async function PATCH(
   if (isInventoryDocKind(g.resource)) {
     const { row, error } = await updateDocHeader(g.resource, g.id, body);
     if (error) return NextResponse.json({ error }, { status: 422 });
+    return NextResponse.json({ ok: true, row });
+  }
+
+  if (g.resource === "registers") {
+    const prepared = await prepareRegister(body);
+    if (!prepared.body) return NextResponse.json({ error: prepared.error }, { status: 422 });
+    const { row, error } = await updateAppRow(g.resource, g.id, prepared.body);
+    if (error) return NextResponse.json({ error }, { status: 503 });
     return NextResponse.json({ ok: true, row });
   }
 

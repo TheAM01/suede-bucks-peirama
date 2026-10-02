@@ -37,6 +37,7 @@ export const ORDER_OPS_STATUSES = [
   "exception",
   "booking_failed",
   "on_hold",
+  "pos",
 ] as const;
 export type OrderOpsStatus = (typeof ORDER_OPS_STATUSES)[number];
 
@@ -109,7 +110,9 @@ async function collection() {
 
 /** Merge each row's stored workflow state in, defaulting to "active" — never fails the caller, degrades to the default on any DB problem. */
 export async function attachOrderOps(rows: Row[]): Promise<Row[]> {
-  const withDefault = () => rows.map((r) => ({ ...r, opsStatus: DEFAULT_STATUS }));
+  // POS sales were handed over at the till, so they start (and stay) in "POS sale".
+  const startStatus = (r: Row) => (r.channel === "pos" ? "pos" : DEFAULT_STATUS);
+  const withDefault = () => rows.map((r) => ({ ...r, opsStatus: startStatus(r) }));
   if (rows.length === 0 || !isDbConfigured()) return withDefault();
   const c = await collection();
   if ("error" in c) return withDefault();
@@ -121,7 +124,7 @@ export async function attachOrderOps(rows: Row[]): Promise<Row[]> {
       const d = byId.get(String(r.id));
       return {
         ...r,
-        opsStatus: d?.opsStatus ?? DEFAULT_STATUS,
+        opsStatus: d?.opsStatus ?? startStatus(r),
         consignmentId: d?.consignmentId,
         loadSheet: d?.loadSheet,
         // The booked courier wins over Shopify's fulfillment tracking company.

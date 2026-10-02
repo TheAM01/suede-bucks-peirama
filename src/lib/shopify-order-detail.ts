@@ -1,5 +1,6 @@
 import "server-only";
 import { shopifyQuery, toGid, fromGid } from "./shopify-client";
+import { isPosOrder } from "@/config/pos";
 
 /**
  * Single-order read: everything the list view can't show. The orders list
@@ -128,6 +129,8 @@ export interface OrderDetail {
   closedAt: string;
   channel: string;
   note: string;
+  /** order attributes — the till writes register, cashier, and payment details here (POS_ATTR) */
+  attributes: { key: string; value: string }[];
   tags: string[];
   payment: string;
   fulfillment: string;
@@ -253,6 +256,7 @@ const ORDER_DETAIL_QUERY = `query OrderDetail($id: ID!) {
   order(id: $id) {
     id name createdAt processedAt cancelledAt cancelReason closedAt
     sourceName note tags email phone
+    customAttributes { key value }
     displayFinancialStatus displayFulfillmentStatus
     customer {
       id displayName firstName lastName email phone numberOfOrders createdAt tags note
@@ -510,8 +514,9 @@ export async function readOrderDetail(
     cancelledAt: str(o.cancelledAt),
     cancelReason: str(o.cancelReason),
     closedAt: str(o.closedAt),
-    channel: lower(o.sourceName) === "pos" ? "pos" : "online",
+    channel: isPosOrder(o.sourceName, o.tags) ? "pos" : "online",
     note: str(o.note),
+    attributes: list(o.customAttributes).map((a) => ({ key: str(a.key), value: str(a.value) })),
     tags: Array.isArray(o.tags) ? o.tags.map(str).filter(Boolean) : [],
     payment: PAYMENT_MAP[lower(o.displayFinancialStatus)] ?? "pending",
     fulfillment: FULFILLMENT_MAP[lower(o.displayFulfillmentStatus)] ?? "unfulfilled",

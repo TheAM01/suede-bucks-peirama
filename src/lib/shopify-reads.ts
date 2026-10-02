@@ -1,6 +1,7 @@
 import "server-only";
 import { shopifyQuery } from "./shopify-client";
 import { readInventoryLevels } from "./inventory-levels";
+import { isPosOrder } from "@/config/pos";
 import type { Row } from "@/config/resource-types";
 
 /**
@@ -183,7 +184,7 @@ async function readOrders(): Promise<ShopifyReadResult> {
         "Guest",
       customerAccount: str(get(o, "customer", "displayName")),
       shippingMethod: str(get(o, "shippingLine", "title")),
-      shippingType: shippingType(o),
+      shippingType: isPosOrder(o.sourceName, o.tags) ? "pos" : shippingType(o),
       city: str(get(o, "shippingAddress", "city")),
       courier: courier || "",
       gateway: Array.isArray(o.paymentGatewayNames)
@@ -197,8 +198,10 @@ async function readOrders(): Promise<ShopifyReadResult> {
       items: num(o.subtotalLineItemsQuantity),
       payment: payMap[lower(o.displayFinancialStatus)] ?? "pending",
       fulfillment: fulMap[lower(o.displayFulfillmentStatus)] ?? "unfulfilled",
-      channel: lower(o.sourceName) === "pos" ? "pos" : "online",
+      channel: isPosOrder(o.sourceName, o.tags) ? "pos" : "online",
       createdAt: date(o.createdAt),
+      /** full timestamp — for "today" in the shop's local time (POS figures) */
+      placedAt: str(o.createdAt),
       notes: str(o.note),
     };
   });

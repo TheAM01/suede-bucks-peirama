@@ -28,6 +28,8 @@ export const ORDER_STATUS_OPTIONS = [
   { value: "dispatched", label: "Dispatched", variant: "success" as const },
   { value: "fulfilled", label: "Fulfilled", variant: "success" as const },
   { value: "delivered", label: "Delivered", variant: "solid" as const },
+  /** sold and handed over at a till (src/config/pos.ts) — never enters the shipping workflow */
+  { value: "pos", label: "POS sale", variant: "primary" as const },
   { value: "returned", label: "Returned", variant: "warning" as const },
   { value: "canceled", label: "Canceled", variant: "destructive" as const },
   { value: "draft", label: "Draft", variant: "outline" as const },

@@ -12,6 +12,7 @@ import { listMovements } from "@/lib/inventory-ledger";
 import { createDoc, listDocs, listInbound } from "@/lib/inventory-docs";
 import { listShipments, reconcileLoadSheets, validateRemittance } from "@/lib/logistics";
 import { isInventoryDocKind } from "@/config/inventory-docs";
+import { prepareRegister } from "@/lib/pos";
 
 export const dynamic = "force-dynamic";
 
@@ -140,6 +141,14 @@ export async function POST(
     if (error || !row) {
       return NextResponse.json({ error: error ?? "Create failed." }, { status: 422 });
     }
+    return NextResponse.json({ row });
+  }
+
+  if (resource === "registers") {
+    const prepared = await prepareRegister(body);
+    if (!prepared.body) return NextResponse.json({ error: prepared.error }, { status: 422 });
+    const { row, error } = await createAppRow(resource, prepared.body);
+    if (error) return NextResponse.json({ error }, { status: 503 });
     return NextResponse.json({ row });
   }
 

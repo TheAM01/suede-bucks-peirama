@@ -33,6 +33,7 @@ import {
   Inbox,
   Banknote,
   Gauge,
+  Till,
   type IconType,
 } from "@/components/icons";
 
@@ -281,6 +282,13 @@ export const NAV: NavCategory[] = [
         icon: Store,
         subtitle: "In-person selling",
         guide: "pos",
+      },
+      {
+        title: "Till",
+        href: "/dashboard/pos/till",
+        icon: Till,
+        subtitle: "Sell in person — scan, take payment, print the receipt",
+        guide: "pos-till",
       },
       {
         title: "Registers",

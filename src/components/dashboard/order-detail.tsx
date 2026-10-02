@@ -25,6 +25,7 @@ import type { OrderOpsDoc } from "@/lib/order-ops";
 import { ORDER_STATUS_OPTIONS, canRun, statusLabel } from "@/config/order-workflow";
 import { OrderEditDrawer } from "./order-control-panel";
 import { useToast } from "@/components/ui/toast";
+import { POS_ATTR } from "@/config/pos";
 import type {
   OrderDetail,
   TimelineEntry,
@@ -325,6 +326,14 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {order.channel === "pos" ? (
+            <Button variant="outline" asChild>
+              <a href={`/print/receipt/${order.id}`} target="_blank" rel="noreferrer">
+                <Printer />
+                Print receipt
+              </a>
+            </Button>
+          ) : null}
           <Button
             onClick={() => setEditing(true)}
             disabled={!canEdit}
@@ -544,6 +553,8 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
               <p className="pt-1 text-xs text-muted-foreground">As entered on this order.</p>
             </CardContent>
           </Card>
+
+          {order.channel === "pos" ? <PosSaleCard attributes={order.attributes} /> : null}
 
           <CustomerProfileCard profile={order.customerProfile} />
 
@@ -780,6 +791,46 @@ function CustomerProfileCard({ profile }: { profile: OrderDetail["customerProfil
           ) : null}
         </CardContent>
       )}
+    </Card>
+  );
+}
+
+/** Where and how a till sale happened — read from the order attributes the till writes (POS_ATTR). */
+function PosSaleCard({ attributes }: { attributes: OrderDetail["attributes"] }) {
+  const get = (k: string) => attributes.find((a) => a.key === k)?.value ?? "";
+  const rows: [string, string][] = [
+    ["Register", get(POS_ATTR.register)],
+    ["Store", get(POS_ATTR.location)],
+    ["Cashier", get(POS_ATTR.cashier)],
+    ["Paid by", get(POS_ATTR.payment)],
+    ["Reference", get(POS_ATTR.reference)],
+    ["Cash received", get(POS_ATTR.tendered) ? formatCurrency(Number(get(POS_ATTR.tendered))) : ""],
+    ["Change given", get(POS_ATTR.change) ? formatCurrency(Number(get(POS_ATTR.change))) : ""],
+    ["Discounts", get(POS_ATTR.discount) ? formatCurrency(Number(get(POS_ATTR.discount))) : ""],
+    ["Exchange for", get(POS_ATTR.exchange)],
+  ].filter(([, v]) => v) as [string, string][];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Printer className="size-4 text-primary" />
+          POS sale
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sold in store (Shopify POS) — no till details recorded here.</p>
+        ) : (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            {rows.map(([k, v]) => (
+              <div key={k}>
+                <dt className="text-xs text-muted-foreground">{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </CardContent>
     </Card>
   );
 }

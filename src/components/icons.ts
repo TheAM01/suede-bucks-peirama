@@ -116,4 +116,6 @@ export {
   InboxArrowDownIcon as Inbox,
   QueueListIcon as History,
   MapPinIcon as Navigation,
+  MinusIcon as Minus,
+  BuildingStorefrontIcon as Till,
 } from "@heroicons/react/24/outline";

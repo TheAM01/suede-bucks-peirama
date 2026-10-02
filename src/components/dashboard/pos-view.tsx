@@ -46,18 +46,33 @@ export function PosView() {
   const staff = staffState.rows;
   const orders = ordersState.rows;
 
-  const openRegisters = registers.filter((r) => r.status === "open");
-  const posSales = registers.reduce((a, r) => a + num(r, "sales"), 0);
-  const cash = openRegisters.reduce((a, r) => a + num(r, "cashFloat"), 0);
-  const activeStaff = staff.filter((s) => s.status === "active").length;
-  const posOrders = orders.filter((o) => o.channel === "pos").slice(0, 5);
+  // Figures come from the POS orders themselves (the till writes real Shopify orders).
+  const isToday = (o: Row) => new Date(String(o.placedAt || o.createdAt)).toDateString() === new Date().toDateString();
+  const posOrders = orders.filter((o) => o.channel === "pos");
+  const today = posOrders.filter(isToday);
+  const salesToday = today.reduce((a, o) => a + num(o, "total"), 0);
+  const cashToday = today.filter((o) => /cash/i.test(String(o.gateway ?? ""))).reduce((a, o) => a + num(o, "total"), 0);
+  const inUse = registers.filter((r) => r.status !== "inactive" && r.locationId);
+  const activeStaff = staff.filter((s) => s.status !== "suspended").length;
+  const recent = posOrders.slice(0, 8);
+  const salesBy = (registerName: string) =>
+    today.filter((o) => (Array.isArray(o.tags) ? o.tags : []).includes(`register:${registerName}`)).reduce((a, o) => a + num(o, "total"), 0);
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">Sell in person from the Till; every sale lands in Orders under POS sale.</p>
+        <Button asChild>
+          <Link href="/dashboard/pos/till">
+            <Store />
+            Open till
+          </Link>
+        </Button>
+      </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Open registers" value={formatNumber(openRegisters.length)} icon={MonitorSmartphone} tone="success" caption={`of ${registers.length}`} />
-        <StatCard label="POS sales today" value={formatCurrency(posSales)} icon={DollarSign} tone="primary" />
-        <StatCard label="Cash in drawers" value={formatCurrency(cash)} icon={Wallet} tone="info" />
+        <StatCard label="POS sales today" value={formatCurrency(salesToday)} icon={DollarSign} tone="primary" caption={`${formatNumber(today.length)} sales`} />
+        <StatCard label="Cash taken today" value={formatCurrency(cashToday)} icon={Wallet} tone="info" />
+        <StatCard label="Registers in use" value={formatNumber(inUse.length)} icon={MonitorSmartphone} tone="success" caption={`of ${registers.length}`} />
         <StatCard label="Active staff" value={formatNumber(activeStaff)} icon={IdCard} tone="highlight" caption={`${staff.length} total`} />
       </div>
 
@@ -94,11 +109,11 @@ export function PosView() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <span className="tabular-nums text-sm font-medium">
-                    {formatCurrency(num(r, "sales"))}
+                  <span className="tabular-nums text-sm font-medium" title="Sales today">
+                    {formatCurrency(salesBy(String(r.name)))}
                   </span>
-                  <Badge variant={r.status === "open" ? "success" : "secondary"}>
-                    {String(r.status)}
+                  <Badge variant={!r.locationId ? "warning" : r.status === "inactive" ? "secondary" : "success"}>
+                    {!r.locationId ? "Needs a store" : r.status === "inactive" ? "Switched off" : "In use"}
                   </Badge>
                 </div>
               </div>
@@ -165,17 +180,18 @@ export function PosView() {
           <CardTitle>Recent in-store sales</CardTitle>
         </CardHeader>
         <CardContent>
-          {posOrders.length === 0 ? (
+          {recent.length === 0 ? (
             <EmptyState
               icon={Store}
               title="No in-store sales yet"
-              description="POS orders will appear here as your registers ring up sales."
+              description="Sales rung up on the Till appear here."
             />
           ) : (
             <div className="space-y-1">
-              {posOrders.map((o) => (
-                <div
+              {recent.map((o) => (
+                <Link
                   key={o.id}
+                  href={`/dashboard/orders/${o.id}`}
                   className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-muted/60"
                 >
                   <div className="min-w-0">
@@ -192,7 +208,7 @@ export function PosView() {
                   <span className="tabular-nums text-sm font-medium">
                     {formatCurrency(num(o, "total"))}
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
           )}

@@ -530,7 +530,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     category: "Sales",
     everyday: [
       { t: "p", text: "The **Orders** page is every sale that has come in, online and in-store, read live from Shopify — and it's where you move each order through your own workflow: checking it, packing it, booking a courier, printing a label, and handing it over." },
-      { t: "p", text: "The tabs above the table show the order's **stage** in that workflow: **Exception**, **Pending CC**, **Active**, **Packaged**, **Booking Failed**, **Finalized**, **In Pickup & Packing**, **Dispatched**, plus Fulfilled, Delivered, Returned, Canceled, Draft, Duplicate, and On Hold. The stage is separate from Shopify's own Payment and Fulfillment columns." },
+      { t: "p", text: "The tabs above the table show the order's **stage** in that workflow: **Exception**, **Pending CC**, **Active**, **Packaged**, **Booking Failed**, **Finalized**, **In Pickup & Packing**, **Dispatched**, plus Fulfilled, Delivered, **POS sale** (sold at a till — no shipping steps), Returned, Canceled, Draft, Duplicate, and On Hold. The stage is separate from Shopify's own Payment and Fulfillment columns." },
       { t: "h", text: "Where new orders land" },
       { t: "p", text: "The moment an order is placed, its shipping address is checked for problems a courier would trip over — a blank or very short address, placeholder text like test, keyboard mashing, a run of the same letter, only the city or country, a missing city, or a missing or unusable phone number. Then it's filed automatically:" },
       { t: "ul", items: [
@@ -933,21 +933,58 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     title: "POS overview",
     category: "Point of Sale",
     everyday: [
-      { t: "p", text: "**Point of Sale** (POS) is selling face to face in your physical shops. The **POS Overview** page summarises it: open registers, sales today, cash in drawers, active staff, your locations, and your latest in-store orders." },
+      { t: "p", text: "**Point of Sale** (POS) is selling face to face in your physical shops. You sell from the **Till**; the **POS Overview** page summarises it: sales and cash taken today, which registers are in use and what each has sold today, your locations, and the latest in-store sales. **Open till** at the top takes you straight to selling." },
       {
         t: "dl",
         items: [
-          { term: "Registers", def: "Your tills — a record of which are open, their cash float, and sales today." },
+          { term: "Till", def: "The selling screen — scan, take payment, print the receipt. See **Till**." },
+          { term: "Registers", def: "Each till, and the store whose stock it sells." },
+          { term: "POS Staff", def: "The people who sell in person; their PIN signs them in at the till." },
           { term: "Locations", def: "Your Shopify locations (stores and warehouses)." },
-          { term: "POS Staff", def: "The people who sell in person, with a role and a PIN." },
         ],
       },
-      { t: "callout", tone: "info", title: "In-store sales land in Orders", text: "Sales rung up on Shopify POS show up in **Orders** with the **POS** channel, and in the Recent POS orders list here. They skip the shipping workflow — there's nothing to deliver." },
-      { t: "callout", tone: "warning", title: "Registers and staff are records you keep", text: "Registers and POS Staff are kept in this app's database; they don't control Shopify POS. Opening a register or suspending a staff member here doesn't change anything on the actual till." },
+      { t: "callout", tone: "info", title: "In-store sales land in Orders", text: "Every till sale is a real Shopify order — paid, already handed over, stock taken off that store. It shows in **Orders** under the **POS sale** tab with a **POS** marker, and never enters the shipping workflow (no packaging, consignment, or label). Sales made on Shopify's own POS app land there too." },
     ],
     technical: [
-      { t: "p", text: "`PosView` (`src/components/dashboard/pos-view.tsx`) aggregates `registers`, `locations`, `pos-staff`, and `orders` (`channel === \"pos\"`, latest five). Registers and staff are app-owned (MongoDB); locations are Shopify-backed and read-only." },
-      { t: "callout", tone: "warning", title: "Location lists aren't linked", text: "The location dropdowns on registers and POS staff (`Flagship Store` / `Airport Popup` / `Downtown Kiosk`), and on load sheets and returns (`LOCATION_OPTIONS`), are fixed option lists in `src/config/resources.ts` — they don't read from the Shopify locations resource. Only the stock-adjustment facility picker is live." },
+      { t: "p", text: "`PosView` (`src/components/dashboard/pos-view.tsx`) computes from POS orders (`channel === \"pos\"`, via `isPosOrder()`): sales and cash (gateway matching /cash/) for today by `placedAt` in the browser's local day, per-register sales from the `register:<name>` tag, plus `registers`, `locations`, and `pos-staff`." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "pos-till",
+    title: "Till",
+    category: "Point of Sale",
+    everyday: [
+      { t: "p", text: "The **Till** is where you sell in person. Each sale becomes an order in Shopify, already paid and handed over, with the stock taken off the store the till belongs to." },
+      { t: "ol", items: [
+        "**Pick the register** the first time on a device — the till remembers it. (Add registers on the Registers page first, each with the store it sells from.)",
+        "**Sign in with your PIN** (from POS Staff). Use **Switch cashier** when someone else takes over — every sale records who made it.",
+        "**Add items**: scan a barcode, or type a SKU and press Enter, or search by name and tap the product. Each tile shows how many are in stock at this store.",
+        "In the cart, change quantities with − / +, give an item a **Discount** (% or an amount), or put a **Sale discount** on the whole cart.",
+        "Optionally **add a customer** — search by name, phone, or email, or add a new one. Leave it as walk-in otherwise.",
+        "Press **Charge**, pick how they paid: **Cash** (type what they handed you, or tap a quick amount — the till shows the change), **Card**, **JazzCash**, **EasyPaisa**, or **Bank transfer** (add the slip or transaction reference).",
+        "**Complete sale**, then **Print receipt** (80mm thermal printer) and **New sale**.",
+      ] },
+      { t: "h", text: "Returns and exchanges" },
+      { t: "ol", items: [
+        "Switch the till to **Return** and enter the receipt's order number (e.g. PF1032K).",
+        "Enter how many of each item are coming back.",
+        "**Refund** gives the money back — pick how you're handing it back (cash, card, wallet). **Exchange for other items** gives no money back; instead the value becomes a credit on the next sale, and the till switches to Sale with the credit applied.",
+        "Returned items go straight back into this store's stock.",
+      ] },
+      { t: "callout", tone: "warning", title: "Exchange credit isn't paid out", text: "If the replacement items cost less than the credit, the difference isn't refunded — the till warns you. Do a normal refund for the difference instead." },
+      { t: "callout", tone: "info", title: "Prices come from Shopify", text: "The till always charges Shopify's current price; only quantities and the discounts you enter come from the till. Selling an item whose stock shows 0 is allowed (you have it in hand) and the till just warns you." },
+    ],
+    technical: [
+      { t: "p", text: "`/dashboard/pos/till` renders `PosTill` (`src/components/dashboard/pos-till.tsx`). The register id is kept per device in `localStorage` (`suedebucks:pos-register`); the cashier's PIN only lives in memory and is re-verified on every sale and return. Money is computed by `computeCart()` (`src/config/pos.ts`), shared by the till and the server so both agree to the cent." },
+      { t: "ul", items: [
+        "`POST /api/pos/cashier` → `verifyCashier(pin)` (active, non-suspended `pos-staff` with that PIN; duplicate PINs are refused). `GET /api/pos/catalog?registerId=` → `readCatalog(locationId)`: active product variants (100 per page, up to 3,000) with `price`, `sku`, `barcode`, and `inventoryLevel(locationId).available`. `GET /api/pos/customers?q=` searches Shopify customers.",
+        "`POST /api/pos/sale` → `createSale()`: re-reads variant prices from Shopify, folds line discounts into each unit price (`properties` record the original price and discount), and sends cart discount + exchange credit as one `itemFixedDiscountCode`. It calls `orderCreate` with `financialStatus: PAID`, one `SALE` transaction on the method's gateway, `fulfillmentStatus: FULFILLED` + `fulfillment.locationId` (stock leaves that location; `inventoryBehaviour: DECREMENT_IGNORING_POLICY`), tags `pos`, `register:<name>`, `cashier:<name>`, and `customAttributes` (`POS_ATTR`: register, location, cashier, payment, reference, cash tendered, change, discount, exchange). The customer is `toAssociate` (existing) or `toUpsert` (new).",
+        "Returns: `GET /api/pos/sale-lookup?number=` (`orders(query: \"name:…\")`, with `refundableQuantity` per line); `POST /api/pos/return` → `createReturn()` asks `order.suggestedRefund` for the exact amount and parent transaction, then `refundCreate` with `restockType: RETURN` at the register's location. **Refund** sends the suggested transactions; **exchange** sends none and returns the amount as credit for the next sale.",
+        "Orders integration: `isPosOrder(sourceName, tags)` marks `channel: pos` and `shippingType: pos`; `attachOrderOps()` defaults those orders to the `pos` stage (tab **POS sale**), and the `orders/create` webhook skips them. `/print/receipt/[id]` renders an 80mm receipt from `readOrderDetail()` (now with `attributes`); POS orders get **Print receipt** and a **POS sale** card on their page.",
+        "Requires `write_orders`, `read_customers` / `write_customers`, `read_inventory`, `read_products`.",
+      ] },
     ],
   },
 
@@ -957,23 +994,45 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     title: "Registers",
     category: "Point of Sale",
     everyday: [
-      { t: "p", text: "A **Register** is a till. This page is your record of each one: where it is, whether it's open, the cash float it started with, its sales today, and who opened it." },
+      { t: "p", text: "A **Register** is a till, and the store whose stock it sells. The Till asks for a register the first time on each device." },
       {
         t: "dl",
         items: [
-          { term: "Register", def: "A name for the till, like Front Desk 1, with its location." },
-          { term: "Status", def: "**Open** or **Closed**." },
-          { term: "Cash float", def: "The starting cash in the drawer for giving change." },
-          { term: "Sales today", def: "What the till has taken today." },
-          { term: "Opened by", def: "Who started the session." },
+          { term: "Register", def: "A name for the till, like Front counter, with the store it sells from underneath." },
+          { term: "Sells from", def: "The Shopify location whose stock goes down when this till sells, and where returned items go back." },
+          { term: "Status", def: "**In use** or **Switched off** (a switched-off register can't be picked at the till)." },
         ],
       },
-      { t: "ol", items: ["Open Point of Sale then Registers.", "Click New to add a till, or click one to update it.", "At the start of a shift set it **Open**, with the float and who opened it.", "At the end of the day enter the sales, set it **Closed**, and count the drawer: it should hold the float plus cash sales."] },
-      { t: "callout", tone: "info", title: "Entered by hand", text: "Every figure here is typed in — nothing is pulled from Shopify POS — and each till is a single record, not a history of shifts." },
+      { t: "ol", items: ["Open Point of Sale then Registers.", "Click New register, name it, pick the store it sells from, and save.", "On the device at that counter, open the Till and pick this register."] },
     ],
     technical: [
-      { t: "p", text: "Keyed `registers`; app-owned in MongoDB (`app_registers`). Search covers `name`, `location`, `openedBy`. Fields: `name`, `location` (fixed list), `status` (`open` / `closed`), `openedBy` (free text, not linked to `pos-staff`), `cashFloat`, `sales`. No session log or cash-variance tracking." },
-      { t: "p", text: "KPIs: Open registers, Cash in drawers (`sum(cashFloat)` of open), POS sales today (`sum(sales)`), Registers." },
+      { t: "p", text: "Keyed `registers`; app-owned in MongoDB (`app_registers`). Create and update go through `prepareRegister()` (`src/lib/pos.ts`), which requires `name` and `locationId` (`optionsFrom: locations`) and stores the location's `location` name next to it. `getRegister()` refuses inactive registers and ones with no `locationId` (older registers made before the till existed need one set). KPIs: Registers, In use, Stores covered, Need a store." },
+    ],
+  },
+
+  // ==========================================================================
+  {
+    id: "pos-staff",
+    title: "POS staff",
+    category: "Point of Sale",
+    everyday: [
+      { t: "p", text: "**POS Staff** are the people who sell in your physical shops. Their **PIN** signs them in at the **Till**, and every sale and return records who made it." },
+      {
+        t: "dl",
+        items: [
+          { term: "Staff / Email", def: "Who they are and how to reach them." },
+          { term: "Role", def: "**Manager**, **Associate**, or **Cashier** — a label; everyone with a PIN can sell and do returns." },
+          { term: "Location", def: "Which shop they usually work at." },
+          { term: "PIN", def: "4–8 digits, unique to them — what they type at the till." },
+          { term: "Status", def: "**Active**, or **Suspended** — a suspended person's PIN stops working at the till." },
+        ],
+      },
+      { t: "ol", items: ["Open Point of Sale then POS Staff.", "Click New to add someone, with a unique PIN.", "Suspend someone instead of deleting them if they're away — their past sales keep their name."] },
+      { t: "callout", tone: "warning", title: "Keep PINs unique and private", text: "Two active people with the same PIN can't sign in until one is changed. PINs are stored as plain text in this app, so don't reuse bank or phone PINs. The till itself still needs the dashboard login once on each device." },
+    ],
+    technical: [
+      { t: "p", text: "Keyed `pos-staff`; app-owned in MongoDB (`app_pos_staff`). `verifyCashier(pin)` (`src/lib/pos.ts`) matches `pin` among staff whose `status` isn't `suspended` / `inactive`, refusing a PIN that matches more than one. The cashier's `name` is written to each sale's `cashier:<name>` tag and `POS cashier` attribute (a snapshot — renaming later doesn't rewrite past sales). Roles aren't enforced." },
+      { t: "p", text: "KPIs: Staff, Active, Managers, Locations covered (distinct `location`)." },
     ],
   },
 
@@ -998,32 +1057,6 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     technical: [
       { t: "p", text: "Keyed `locations`; Shopify-backed, **read-only** (no writer — deleting a location would strand inventory). `readLocations()` reads `locations` (first 50): `name`, `isActive` → `status`, `address.address1/city/country`, and `type` = `retail` when `fulfillsOnlineOrders`, else `warehouse` (a heuristic; `popup` never comes from Shopify). `inventoryValue` is `0` — not computed." },
       { t: "p", text: "KPIs: Locations, Active, Retail, Warehouses. Rows feed `optionsFrom` for the stock-adjustment `facilityId` field." },
-    ],
-  },
-
-  // ==========================================================================
-  {
-    id: "pos-staff",
-    title: "POS staff",
-    category: "Point of Sale",
-    everyday: [
-      { t: "p", text: "**POS Staff** is your record of the people who sell in your physical shops: their role, where they work, a PIN, and whether they're active." },
-      {
-        t: "dl",
-        items: [
-          { term: "Staff / Email", def: "Who they are and how to reach them." },
-          { term: "Role", def: "**Manager**, **Associate**, or **Cashier**." },
-          { term: "Location", def: "Which shop they work at." },
-          { term: "PIN", def: "Their till code." },
-          { term: "Status", def: "**Active** or **Suspended**." },
-        ],
-      },
-      { t: "ol", items: ["Open Point of Sale then POS Staff.", "Click New to add someone, with their role, location, and PIN.", "Set someone to Suspended rather than deleting them if they're away."] },
-      { t: "callout", tone: "warning", title: "This list doesn't control the tills", text: "Staff here are records only — their PINs don't sign anyone in to Shopify POS, and suspending someone here doesn't lock them out of the till. Manage real POS access in Shopify. Because PINs are stored as plain text here, don't reuse real till PINs." },
-    ],
-    technical: [
-      { t: "p", text: "Keyed `pos-staff`; app-owned in MongoDB (`app_pos_staff`). Search covers `name`, `email`, `location`. Fields: `name`, `email`, `role` (`manager` / `associate` / `cashier`), `location` (fixed list), `pin` (plain text), `status` (`active` / `suspended`). Roles are labels — no permissions are enforced — and these are not dashboard users (the dashboard has one admin login)." },
-      { t: "p", text: "KPIs: Staff, Active, Managers, Locations covered (distinct `location`)." },
     ],
   },
 

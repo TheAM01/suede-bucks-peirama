@@ -15,6 +15,7 @@ import { applyTransition, getOrderOps, intakeOrder } from "./order-ops";
 import { readOrderBrief } from "./shopify-order-detail";
 import { fulfillOrder, setOrderTags, updateOrderShipping } from "./shopify-writes";
 import { readAppSettings } from "./app-settings";
+import { isPosOrder } from "@/config/pos";
 import { renderConsignmentId } from "@/config/consignment-schema";
 import { attachToLoadSheet, detachFromLoadSheet, findSheetByReference, resolveLoadSheet } from "./dispatch";
 
@@ -312,6 +313,8 @@ interface OrderWebhookPayload {
   name?: string;
   phone?: string;
   source_name?: string;
+  /** comma-separated, as Shopify sends it */
+  tags?: string;
   payment_gateway_names?: string[];
   customer?: { phone?: string };
   shipping_address?: {
@@ -331,8 +334,9 @@ interface OrderWebhookPayload {
 /** orders/create: check the address, pick the starting tab, record it. Idempotent. */
 export async function intakeFromWebhook(p: OrderWebhookPayload): Promise<{ error?: string }> {
   if (!p.id) return { error: "Payload has no order id." };
-  // Point-of-sale orders are handed over at the till — nothing to ship.
-  if (p.source_name === "pos") return {};
+  // Point-of-sale orders (Shopify POS, or our own till) are handed over at the
+  // counter — nothing to ship, so no address check and no workflow tab.
+  if (isPosOrder(p.source_name, p.tags)) return {};
   const a = p.shipping_address;
   const issues = checkAddress(
     a
